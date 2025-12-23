@@ -14,6 +14,7 @@ export type Direction = 'LONG' | 'SHORT';
 
 export interface RitualContext {
   walletAddress: string | null;
+  balanceUSDC: number;
   direction: Direction | null;
   targetProfitUSDT: number;
   entryPrice: number | null;

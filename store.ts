@@ -4,6 +4,7 @@ import { RitualStatus, RitualStore, RitualContext } from './types';
 
 const initialContext: RitualContext = {
   walletAddress: null,
+  balanceUSDC: 0,
   direction: null,
   targetProfitUSDT: 10,
   entryPrice: null,
@@ -17,11 +18,14 @@ const initialContext: RitualContext = {
 };
 
 export const useRitualStore = create<RitualStore>((set) => ({
-  status: RitualStatus.DISCONNECTED,
+  status: RitualStatus.READY, // Changed from DISCONNECTED to READY to show the form immediately
   context: initialContext,
   setStatus: (status) => set({ status }),
   setContext: (update) => set((state) => ({ 
     context: { ...state.context, ...update } 
   })),
-  reset: () => set({ status: RitualStatus.READY, context: { ...initialContext } }),
+  reset: () => set((state) => ({ 
+    status: RitualStatus.READY, 
+    context: { ...initialContext, walletAddress: state.context.walletAddress, balanceUSDC: state.context.balanceUSDC } 
+  })),
 }));

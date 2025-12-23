@@ -1,55 +1,37 @@
 
-import React, { useEffect } from 'react';
+import React from 'react';
 import { useRitualStore } from './store';
 import { RitualStatus } from './types';
 import { Layout } from './components/Layout';
-import { WalletBar } from './components/WalletBar';
 import { OmenCard } from './components/OmenCard';
 import { RitualForm } from './components/RitualForm';
 import { LiveRitual } from './components/LiveRitual';
 import { ResultView } from './components/ResultView';
 
 const App: React.FC = () => {
-  const { status, context, setStatus, setContext } = useRitualStore();
-
-  useEffect(() => {
-    // Basic LocalStorage Lock Enforcement
-    const today = new Date().toISOString().split('T')[0];
-    const ritualKey = `ritual-lock-${today}`;
-    const hasPerformed = localStorage.getItem(ritualKey);
-
-    // If we're in real mode, we'd check the chain. 
-    // In mock mode, we just check local storage.
-    // (Disabled for development convenience but structure exists)
-  }, []);
+  const { status, setStatus } = useRitualStore();
 
   const renderContent = () => {
     switch (status) {
-      case RitualStatus.DISCONNECTED:
-        return (
-          <div className="flex flex-col items-center justify-center min-h-[60vh] text-center space-y-8">
-            <div className="space-y-4">
-               <h1 className="text-6xl md:text-8xl font-black italic tracking-tighter uppercase drop-shadow-brutalist">
-                Daily BTC<br/>
-                <span className="text-primary bg-white px-4 text-black rotate-2 inline-block">Luck</span> Ritual
-               </h1>
-               <p className="text-white/40 font-mono text-sm tracking-widest uppercase italic">Est. 2024 • Do Not Fades</p>
-            </div>
-            <WalletBar />
-          </div>
-        );
       case RitualStatus.READY:
+      case RitualStatus.DISCONNECTED: // Handle both as the main form now
         return (
-          <>
+          <div className="w-full animate-in slide-in-from-bottom-8 fade-in duration-500">
             <OmenCard />
             <RitualForm />
-          </>
+          </div>
         );
       case RitualStatus.OPENING:
         return (
-          <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-6">
-            <div className="text-9xl animate-spin">🔮</div>
-            <h2 className="text-4xl font-black italic uppercase animate-pulse">Consulting the Blockchain...</h2>
+          <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-8 animate-pulse">
+            <div className="relative">
+              <div className="text-9xl animate-[spin_3s_linear_infinite]">🔮</div>
+              <div className="absolute inset-0 bg-primary/20 blur-3xl rounded-full"></div>
+            </div>
+            <div className="space-y-2 text-center">
+              <h2 className="text-4xl font-black italic uppercase tracking-tighter">Summoning Liquidity...</h2>
+              <p className="font-mono text-xs text-white/40 uppercase">Consulting the block hash of destiny</p>
+            </div>
           </div>
         );
       case RitualStatus.LIVE:
@@ -60,10 +42,16 @@ const App: React.FC = () => {
         return <ResultView />;
       case RitualStatus.ERROR:
         return (
-          <div className="text-center space-y-6">
-            <h1 className="text-6xl font-black text-failure">SYSTEM ERROR 💀</h1>
-            <p>The vibes were too chaotic for the network to handle.</p>
-            <button onClick={() => setStatus(RitualStatus.READY)} className="bg-primary px-8 py-4 rounded-xl font-bold">Retry Ritual</button>
+          <div className="text-center space-y-8 py-20">
+            <div className="text-8xl">⚠️</div>
+            <h1 className="text-6xl font-black text-failure uppercase italic">Ritual Rejected</h1>
+            <p className="max-w-md mx-auto font-mono text-sm opacity-60 uppercase">The connection between your soul and the exchange has been severed by cosmic noise.</p>
+            <button 
+              onClick={() => setStatus(RitualStatus.READY)} 
+              className="bg-white text-black px-10 py-4 rounded-xl font-black uppercase italic shadow-brutalist hover:scale-105 transition-all"
+            >
+              Re-ignite Altar
+            </button>
           </div>
         );
       default:

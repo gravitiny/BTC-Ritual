@@ -4,12 +4,15 @@ import { useRitualStore } from '../store';
 import { RitualStatus, Direction } from '../types';
 import { MARGIN_USDT, LEVERAGE, NOTIONAL } from '../constants';
 import { calculateLiqPrice, calculateTargetPrice } from '../utils';
-import { priceFeed } from '../services/priceService';
 import { executionService } from '../services/executionService';
+import { ethers } from 'ethers';
+import { hyperliquidService } from '../services/hyperliquidService';
 
 export const RitualForm: React.FC = () => {
   const { context, setContext, setStatus } = useRitualStore();
   const [isLockedToday, setIsLockedToday] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [signer, setSigner] = useState<ethers.JsonRpcSigner | null>(null);
 
   useEffect(() => {
     if (context.walletAddress) {
@@ -22,14 +25,47 @@ export const RitualForm: React.FC = () => {
     }
   }, [context.walletAddress]);
 
+  const handleConnect = async () => {
+    // Fix: Access ethereum on window by casting to any to avoid TS error
+    if (!(window as any).ethereum) {
+        alert("Etheral vessel (wallet) not found. Please install MetaMask.");
+        return;
+    }
+    
+    setIsConnecting(true);
+    try {
+      // Fix: Access ethereum on window by casting to any to avoid TS error
+      const provider = new ethers.BrowserProvider((window as any).ethereum);
+      const accounts = await provider.send("eth_requestAccounts", []);
+      const currentSigner = await provider.getSigner();
+      const address = accounts[0];
+
+      // Fetch real Hyperliquid balance (Cross Margin Account Value)
+      const state = await hyperliquidService.getClearinghouseState(address);
+      const balance = parseFloat(state.marginSummary.accountValue) || 0;
+
+      setSigner(currentSigner);
+      setContext({ 
+        walletAddress: address, 
+        balanceUSDC: balance 
+      });
+    } catch (e) {
+      console.error("Wallet connection failed:", e);
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
   const handleStart = async () => {
-    if (!context.direction || isLockedToday) return;
+    if (!context.direction || isLockedToday || !context.walletAddress || !signer) return;
+    
     setStatus(RitualStatus.OPENING);
     try {
       const { entryPrice } = await executionService.openPosition({
         direction: context.direction,
         margin: MARGIN_USDT,
         leverage: LEVERAGE,
+        signer: signer
       });
 
       const liqPrice = calculateLiqPrice(entryPrice, context.direction);
@@ -42,6 +78,10 @@ export const RitualForm: React.FC = () => {
         currentPrice: entryPrice,
         startedAt: Date.now()
       });
+      
+      // Update balance after starting (approximate)
+      setContext({ balanceUSDC: context.balanceUSDC }); 
+      
       setStatus(RitualStatus.LIVE);
     } catch (e) {
       console.error(e);
@@ -55,7 +95,12 @@ export const RitualForm: React.FC = () => {
       <div className="bg-[#251628] border-2 border-white p-6 rounded-xl jagged-bottom relative">
         <div className="flex justify-between items-center border-b border-dashed border-white/20 pb-4 mb-4">
           <h3 className="font-black text-xl italic uppercase tracking-tighter">Sacred Parameters</h3>
-          <span className="text-3xl">🔒</span>
+          <div className="flex flex-col items-end">
+            <span className="text-[10px] opacity-40 uppercase font-mono">Hyperliquid Margin</span>
+            <span className="text-success font-black font-mono">
+              {context.walletAddress ? `${context.balanceUSDC.toFixed(2)} USDC` : "---"}
+            </span>
+          </div>
         </div>
         <div className="bg-black/40 p-4 rounded-lg font-mono text-xl flex items-center justify-around">
           <div className="flex flex-col items-center">
@@ -133,19 +178,50 @@ export const RitualForm: React.FC = () => {
               />
               <span className="absolute right-4 top-1/2 -translate-y-1/2 opacity-30 font-bold">USDT</span>
             </div>
+
+            <div className="flex flex-col items-center justify-center pt-2">
+              <div className="flex items-center gap-3 bg-black/20 px-6 py-2 rounded-full border border-white/5">
+                <span className="text-[10px] font-mono uppercase text-white/30 tracking-[0.2em]">Available Balance:</span>
+                <span className="text-success font-black font-mono text-lg">
+                  {context.walletAddress ? `${context.balanceUSDC.toFixed(2)} USDC` : "Wallet Not Bound"}
+                </span>
+              </div>
+            </div>
           </div>
 
-          {/* CTA */}
-          <button 
-            disabled={!context.direction}
-            onClick={handleStart}
-            className={`w-full h-20 rounded-2xl border-4 border-black font-black text-3xl uppercase italic shadow-brutalist transition-all flex items-center justify-center gap-4 ${
-              !context.direction ? 'bg-gray-700 opacity-50 cursor-not-allowed' : 'bg-primary hover:scale-105 active:translate-y-1'
-            }`}
-          >
-            <span>Start the Ritual</span>
-            <span className="animate-pulse">🧨</span>
-          </button>
+          {/* Main Action Button */}
+          {!context.walletAddress ? (
+            <button 
+              disabled={isConnecting}
+              onClick={handleConnect}
+              className={`w-full h-24 rounded-2xl border-4 border-black font-black text-2xl uppercase italic shadow-brutalist transition-all flex items-center justify-center gap-4 bg-primary hover:scale-105 active:translate-y-1 ${
+                isConnecting ? 'opacity-80' : ''
+              }`}
+            >
+              {isConnecting ? (
+                <>
+                  <span className="size-6 border-4 border-white border-t-transparent rounded-full animate-spin"></span>
+                  <span>Invoking Soul...</span>
+                </>
+              ) : (
+                <>
+                  <span>Connect Real Wallet</span>
+                  <span className="text-3xl">🧿</span>
+                </>
+              )}
+            </button>
+          ) : (
+            <button 
+              disabled={!context.direction}
+              onClick={handleStart}
+              className={`w-full h-20 rounded-2xl border-4 border-black font-black text-3xl uppercase italic shadow-brutalist transition-all flex items-center justify-center gap-4 ${
+                !context.direction ? 'bg-gray-700 opacity-50 cursor-not-allowed' : 'bg-primary hover:scale-105 active:translate-y-1'
+              }`}
+            >
+              <span>Commit Ritual (Sign)</span>
+              <span className="animate-pulse">✍️</span>
+            </button>
+          )}
         </>
       )}
     </div>

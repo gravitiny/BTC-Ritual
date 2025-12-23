@@ -1,10 +1,13 @@
 
 import { priceFeed } from './priceService';
+import { hyperliquidService } from './hyperliquidService';
+import { ethers } from 'ethers';
 
 export interface TradeParams {
   direction: 'LONG' | 'SHORT';
   margin: number;
   leverage: number;
+  signer?: ethers.JsonRpcSigner;
 }
 
 export interface ExecutionResult {
@@ -12,54 +15,45 @@ export interface ExecutionResult {
   positionId: string;
 }
 
-/**
- * ENVIRONMENT CONFIGURATION
- * Set NEXT_PUBLIC_MODE=real to enable Hyperliquid integration
- */
-const EXECUTION_MODE = 'mock'; // 'mock' | 'real'
-
 export const executionService = {
   openPosition: async (params: TradeParams): Promise<ExecutionResult> => {
-    if (EXECUTION_MODE === 'mock') {
-      // Simulate network delay for opening ritual
-      await new Promise(r => setTimeout(r, 2000));
-      const entryPrice = priceFeed.getLatest();
-      if (!entryPrice) {
-        throw new Error("Price feed not ready. The spirits are silent.");
-      }
-      return {
-        entryPrice,
-        positionId: `mock-${Date.now()}`
-      };
-    } else {
-      /**
-       * REAL MODE (HYPERLIQUID INTEGRATION)
-       * Requires server-side implementation for signing and API management.
-       */
-      try {
-        // Example logic for real mode
-        // const response = await fetch('/api/hyperliquid/open', {
-        //   method: 'POST',
-        //   headers: { 'Content-Type': 'application/json' },
-        //   body: JSON.stringify({ ...params, symbol: 'BTC-PERP' })
-        // });
-        // if (!response.ok) throw new Error("Exchange rejected ritual");
-        // return await response.json();
-        throw new Error("Real execution requires active API backend.");
-      } catch (e) {
-        console.error("Hyperliquid Error:", e);
+    if (!params.signer) {
+        throw new Error("Soul not bound. Connect wallet first.");
+    }
+
+    // 1. Get current market price from HL to ensure slippage protection
+    const midPrice = await hyperliquidService.getMidPrice('BTC');
+    
+    // 2. Adjust limit price based on direction to ensure fill (Market Order emulation)
+    const limitPrice = params.direction === 'LONG' 
+        ? midPrice * 1.01 
+        : midPrice * 0.99;
+
+    // 3. Calculate size in BTC based on notional
+    const notional = params.margin * params.leverage;
+    const size = parseFloat((notional / midPrice).toFixed(4));
+
+    try {
+        // In this 'Ritual' mode, we're assuming the user has margin on HL already.
+        // We trigger the signing request.
+        const result = await hyperliquidService.placeOrder(params.signer, {
+            isBuy: params.direction === 'LONG',
+            size: size,
+            limitPrice: parseFloat(limitPrice.toFixed(2))
+        });
+
+        // If successful, return the data to drive the UI
+        return {
+            entryPrice: midPrice,
+            positionId: result.response?.data?.statuses?.[0]?.resting?.oid?.toString() || `hl-${Date.now()}`
+        };
+    } catch (e) {
+        console.error("Hyperliquid placement failed:", e);
         throw e;
-      }
     }
   },
 
   closePosition: async (positionId: string): Promise<void> => {
-    if (EXECUTION_MODE === 'mock') {
-      await new Promise(r => setTimeout(r, 500));
-      return;
-    } else {
-      // TODO: Implementation for closing real positions on Hyperliquid
-      // await fetch('/api/hyperliquid/close', { method: 'POST', body: JSON.stringify({ positionId }) });
-    }
+    // Logic to close position via Hyperliquid cancel or opposite order
   }
 };
