@@ -4,11 +4,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Meme Ritual: Daily BTC Divination</title>
+    <title>LuckyTrade • Daily BTC Divination</title>
     <script src="https://cdn.tailwindcss.com?plugins=forms,typography,aspect-ratio"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Space+Grotesk:wght@300;400;500;700;900&display=swap" rel="stylesheet">
     <script>
         tailwind.config = {
             darkMode: 'class',
@@ -16,12 +16,12 @@
                 extend: {
                     fontFamily: {
                         sans: ['Space Grotesk', 'sans-serif'],
-                        display: ['Space Grotesk', 'sans-serif'],
+                        display: ['Bungee', 'cursive'],
                         mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'Liberation Mono', 'Courier New', 'monospace'],
                     },
                     colors: {
                         primary: "#cd2bee",
-                        background: "#1f1022",
+                        background: "#140a1a",
                         failure: "#ff3333",
                         success: "#0bda7a",
                     },
@@ -31,10 +31,20 @@
     </script>
     <style>
         body {
-            background-color: #1f1022;
+            background-color: #140a1a;
             color: white;
             margin: 0;
             overflow-x: hidden;
+        }
+        body::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            background: radial-gradient(circle at 20% 20%, rgba(205, 43, 238, 0.3), transparent 40%),
+                        radial-gradient(circle at 80% 10%, rgba(11, 218, 122, 0.2), transparent 45%),
+                        radial-gradient(circle at 80% 80%, rgba(255, 51, 51, 0.25), transparent 40%);
+            pointer-events: none;
+            z-index: -1;
         }
         .jagged-bottom {
             clip-path: polygon(0% 0%, 100% 0%, 100% 90%, 95% 95%, 90% 90%, 85% 95%, 80% 90%, 75% 95%, 70% 90%, 65% 95%, 60% 90%, 55% 95%, 50% 90%, 45% 95%, 40% 90%, 35% 95%, 30% 90%, 25% 95%, 20% 90%, 15% 95%, 10% 90%, 5% 95%, 0% 90%);
@@ -55,6 +65,12 @@
           75% { transform: translateX(5px) rotate(1deg); }
         }
         .animate-shake { animation: shake 0.2s ease-in-out infinite; }
+
+        @keyframes jitter {
+          0%, 100% { transform: translate(-2px, 0) rotate(-4deg); }
+          50% { transform: translate(2px, -1px) rotate(4deg); }
+        }
+        .animate-jitter { animation: jitter 0.5s ease-in-out infinite; }
 
         @keyframes explode {
           0% { transform: scale(0); opacity: 0; }

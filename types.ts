@@ -1,46 +1,47 @@
+export type TradeSide = 'LONG' | 'SHORT';
 
-export enum RitualStatus {
-  DISCONNECTED = 'DISCONNECTED',
-  READY = 'READY',
-  OPENING = 'OPENING',
-  LIVE = 'LIVE',
-  STOPPED = 'STOPPED',
-  SUCCESS = 'SUCCESS',
-  FAIL = 'FAIL',
-  ERROR = 'ERROR'
+export type TradeStatus = 'idle' | 'running' | 'success' | 'fail' | 'aborted';
+
+export type AppRoute = '/' | '/trade' | '/run' | '/history';
+
+export type CrownTierId = 'green' | 'blue' | 'purple' | 'orange' | 'prism';
+
+export interface CrownInventoryEntry {
+  intact: number;
+  broken: number;
 }
 
-export type Direction = 'LONG' | 'SHORT';
+export type CrownInventory = Record<CrownTierId, CrownInventoryEntry>;
 
-export interface RitualContext {
-  walletAddress: string | null;
-  balanceUSDC: number;
-  direction: Direction | null;
-  targetProfitUSDT: number;
-  entryPrice: number | null;
-  currentPrice: number | null;
-  liqPrice: number | null;
-  targetPrice: number | null;
-  startedAt: number | null;
+export interface CrownEvent {
+  awardedTierId: CrownTierId;
+  broken: boolean;
+  upgrades: CrownTierId[];
+  createdAt: number;
+}
+
+export interface TradeSession {
+  id: string;
+  date: string; // YYYY-MM-DD
+  side: TradeSide;
+  targetProfitUsd: number;
+  marginUsd: number;
+  leverage: number;
+  status: TradeStatus;
+  luckPath: number[];
+  startedAt: number;
   endedAt: number | null;
-  omen: string;
-  whisper: string;
+  entryPrice: number;
+  liqPrice: number;
+  targetPrice: number;
+  currentPrice: number;
+  orderId?: number;
 }
 
-export interface RitualStore {
-  status: RitualStatus;
-  context: RitualContext;
-  setStatus: (status: RitualStatus) => void;
-  setContext: (context: Partial<RitualContext>) => void;
-  reset: () => void;
-}
+export type ToastKind = 'info' | 'success' | 'error';
 
-export interface FortuneContent {
-  omens: string[];
-  whispers: string[];
-  narrations: {
-    favorable: string[];
-    unfavorable: string[];
-    neutral: string[];
-  };
+export interface ToastMessage {
+  id: string;
+  kind: ToastKind;
+  message: string;
 }

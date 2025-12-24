@@ -1,5 +1,5 @@
 {
-  "name": "Copy of Meme Ritual: Daily Divination",
-  "description": "A daily ritual-style trading app where you perform one BTC trade based on luck and vibes.",
+  "name": "LuckyTrade",
+  "description": "Meme-flavored BTC divination prototype with mock execution, luck tracking, and local history.",
   "requestFramePermissions": []
 }

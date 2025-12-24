@@ -2,21 +2,15 @@
 <img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
 </div>
 
-# Run and deploy your AI Studio app
+# LuckyTrade (Daily BTC Divination)
 
-This contains everything you need to run your app locally.
-
-View your app in AI Studio: https://ai.studio/apps/drive/1YLDowqWTB4XG_KqV9KsQUZIhm8ch-y3c
+Meme-flavored BTC divination prototype with mock execution, price simulation, and local history.
 
 ## Run Locally
 
-**Prerequisites:**  Node.js
+**Prerequisites:** Node.js + pnpm
 
-
-1. Install dependencies:
-   `npm install`
-2. Run the app:
-   `npm run dev`
-
-Optional:
-- If you later add Gemini integration, set `GEMINI_API_KEY` in `.env.local`. The current build does not require it.
+1. Install dependencies: `pnpm install`
+2. Set WalletConnect Project ID: `VITE_WALLETCONNECT_PROJECT_ID=...` in `.env.local`
+3. The app will prompt to add/switch to a signing network named `HL Signer` (chainId 1337) for Hyperliquid order signatures.
+4. Start dev server: `pnpm dev`
