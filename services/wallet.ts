@@ -1,5 +1,6 @@
-import { getDefaultConfig } from '@rainbow-me/rainbowkit';
 import { defineChain } from 'viem';
+import { createConfig, http } from 'wagmi';
+import { injected } from 'wagmi/connectors';
 import { arbitrum, mainnet } from 'wagmi/chains';
 
 const hlSigner = defineChain({
@@ -10,15 +11,24 @@ const hlSigner = defineChain({
   blockExplorers: { default: { name: 'Etherscan', url: 'https://etherscan.io' } },
 });
 
-const projectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || '';
+const chains = [mainnet, arbitrum, hlSigner] as const;
 
-if (!projectId) {
-  console.warn('Missing VITE_WALLETCONNECT_PROJECT_ID. WalletConnect may not work.');
+if (typeof window !== 'undefined') {
+  const keys = Object.keys(window.localStorage);
+  for (const key of keys) {
+    if (key.includes('walletconnect') || key.startsWith('wc@')) {
+      window.localStorage.removeItem(key);
+    }
+  }
 }
 
-export const wagmiConfig = getDefaultConfig({
-  appName: 'LuckyTrade',
-  projectId,
-  chains: [mainnet, arbitrum, hlSigner],
+export const wagmiConfig = createConfig({
+  chains,
+  connectors: [injected()],
+  transports: {
+    [mainnet.id]: http(),
+    [arbitrum.id]: http(),
+    [hlSigner.id]: http('https://rpc.ankr.com/eth'),
+  },
   ssr: false,
 });

@@ -1,12 +1,10 @@
 
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { RainbowKitProvider } from '@rainbow-me/rainbowkit';
 import { WagmiProvider } from 'wagmi';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App';
 import { wagmiConfig } from './services/wallet';
-import '@rainbow-me/rainbowkit/styles.css';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -20,9 +18,7 @@ root.render(
   <React.StrictMode>
     <WagmiProvider config={wagmiConfig}>
       <QueryClientProvider client={queryClient}>
-        <RainbowKitProvider>
-          <App />
-        </RainbowKitProvider>
+        <App />
       </QueryClientProvider>
     </WagmiProvider>
   </React.StrictMode>

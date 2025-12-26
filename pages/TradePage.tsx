@@ -1,11 +1,23 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
+import type { CandlestickData } from 'lightweight-charts';
 import { useAccount, useWalletClient } from 'wagmi';
-import { DAILY_LIMIT_ENABLED, DEFAULT_MARGIN_USD, LEVERAGE, TARGET_PROFIT_OPTIONS } from '../constants';
+import { DAILY_LIMIT_ENABLED, DEFAULT_MARGIN_USD, LEVERAGE, PRICE_TICK_MS, TP_MULTIPLE_OPTIONS } from '../constants';
 import { useAppStore } from '../store';
 import { TradeSide } from '../types';
-import { getAllMids, placeMarketOrder, prepareSignerChain } from '../services/hyperliquid';
-import { calculateLiqPrice, calculateTargetPrice, getCrownTier, getTodayCount } from '../utils';
+import { getAllMids, getCandleSnapshot, placeMarketOrderWithTakeProfit, prepareSignerChain } from '../services/hyperliquid';
+import { calculateLiqPrice, calculateTargetPrice, formatPrice, getCrownTier, getTodayCount } from '../utils';
+import { PriceChart } from '../components/PriceChart';
+
+const buildCandlesFromSnapshot = (snapshot: any[]): CandlestickData[] => {
+  return snapshot.map((candle) => ({
+    time: Math.floor(candle.t / 1000),
+    open: Number(candle.o),
+    high: Number(candle.h),
+    low: Number(candle.l),
+    close: Number(candle.c),
+  }));
+};
 
 export const TradePage: React.FC = () => {
   const { address, isConnected } = useAccount();
@@ -17,8 +29,56 @@ export const TradePage: React.FC = () => {
   const history = useAppStore((state) => state.historySessions);
 
   const [side, setSide] = useState<TradeSide>('LONG');
-  const [targetProfitUsd, setTargetProfitUsd] = useState<number>(TARGET_PROFIT_OPTIONS[0]);
+  const [tpMultiple, setTpMultiple] = useState<number>(TP_MULTIPLE_OPTIONS[0]);
+  const [customMultiple, setCustomMultiple] = useState<string>('');
+
+  const isUserRejected = (error: any) => {
+    const code = error?.code;
+    const message = typeof error?.message === 'string' ? error.message.toLowerCase() : '';
+    return code === 4001 || message.includes('user rejected') || message.includes('rejected');
+  };
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [candles, setCandles] = useState<CandlestickData[]>([]);
+  const [referencePrice, setReferencePrice] = useState<number | null>(null);
+
+  useEffect(() => {
+    const now = Date.now();
+    getCandleSnapshot(now - 60 * 60 * 1000, now)
+      .then((snapshot) => {
+        if (Array.isArray(snapshot)) {
+          setCandles(buildCandlesFromSnapshot(snapshot));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    const fetchPrice = () => {
+      getAllMids()
+        .then((mids) => {
+          const nextPrice = Number(mids.BTC ?? 0);
+          if (!Number.isFinite(nextPrice) || nextPrice <= 0) return;
+          if (mounted) setReferencePrice(nextPrice);
+        })
+        .catch(() => {});
+    };
+    fetchPrice();
+    const timer = window.setInterval(fetchPrice, PRICE_TICK_MS);
+    return () => {
+      mounted = false;
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  const targetProfitUsd = useMemo(() => DEFAULT_MARGIN_USD * tpMultiple, [tpMultiple]);
+
+  const priceGuides = useMemo(() => {
+    if (!referencePrice) return null;
+    const liqPrice = calculateLiqPrice(referencePrice, side);
+    const targetPrice = calculateTargetPrice(referencePrice, side, targetProfitUsd);
+    return { liqPrice, targetPrice };
+  }, [referencePrice, side, targetProfitUsd]);
 
   const handleSubmit = async () => {
     if (!isConnected || !address || !walletClient) {
@@ -29,50 +89,82 @@ export const TradePage: React.FC = () => {
       pushToast({ kind: 'error', message: '今日次数已用完。明天再来。' });
       return;
     }
-    if (targetProfitUsd < 0.1 || targetProfitUsd > 100) {
-      pushToast({ kind: 'error', message: '目标收益建议在 0.1U ~ 100U 之间。' });
+    if (tpMultiple < 0.05) {
+      pushToast({ kind: 'error', message: '自定义倍数建议不低于 0.05 倍。' });
       return;
     }
     setIsSubmitting(true);
     try {
+      pushToast({ kind: 'info', message: '准备签名，读取实时价格...' });
       const originalChainId = await prepareSignerChain(walletClient);
+      pushToast({ kind: 'info', message: '钱包已就绪，拉取 BTC 价格...' });
       const allMids = await getAllMids();
       const referencePrice = Number(allMids.BTC ?? 0);
       if (!Number.isFinite(referencePrice) || referencePrice <= 0) {
         throw new Error('Invalid BTC price');
       }
-      const session = startSession({ side, targetProfitUsd, entryPrice: referencePrice });
-      setRoute('/run');
+      pushToast({ kind: 'info', message: '价格就绪，创建下单并签名...' });
       const size = (DEFAULT_MARGIN_USD * LEVERAGE) / referencePrice;
-      const orderResponse = await placeMarketOrder({
+      pushToast({ kind: 'info', message: '签名完成，发送 /exchange...' });
+      const orderResponse = await placeMarketOrderWithTakeProfit({
         walletClient,
         address,
         isBuy: side === 'LONG',
         size,
         referencePrice,
+        takeProfitPrice: priceGuides?.targetPrice ?? calculateTargetPrice(referencePrice, side, targetProfitUsd),
         originalChainId,
       });
-      const status = orderResponse?.response?.data?.statuses?.[0];
-      const filled = status?.filled;
-      const resting = status?.resting;
-      if (filled?.avgPx) {
-        const filledPrice = Number(filled.avgPx);
-        const liqPrice = calculateLiqPrice(filledPrice, side);
-        const targetPrice = calculateTargetPrice(filledPrice, side, targetProfitUsd);
-        updateSession({
-          entryPrice: filledPrice,
-          currentPrice: filledPrice,
-          liqPrice,
-          targetPrice,
-        });
+      pushToast({ kind: 'info', message: '收到订单响应，解析状态...' });
+      console.info('Hyperliquid order response', orderResponse);
+      const statuses = orderResponse?.response?.data?.statuses ?? [];
+      const mainStatus = statuses[0];
+      const tpStatus = statuses[1];
+      const filled = mainStatus?.filled;
+      const errorMessage = mainStatus?.error ?? orderResponse?.error;
+      if (errorMessage) {
+        pushToast({ kind: 'error', message: `下单失败：${errorMessage}` });
+        return;
       }
-      if (filled?.oid) {
-        updateSession({ orderId: filled.oid });
-      } else if (resting?.oid) {
-        updateSession({ orderId: resting.oid });
+      if (!filled) {
+        pushToast({ kind: 'error', message: '下单失败：主单未成交，请重新下单。' });
+        return;
       }
-    } catch (error) {
-      pushToast({ kind: 'error', message: '下单失败，宇宙在卡顿。' });
+      const filledPrice = Number(filled.avgPx ?? referencePrice);
+      const filledSize = Number(filled.totalSz ?? size);
+      const actualMarginUsd = (filledSize * filledPrice) / LEVERAGE;
+      const actualTargetProfitUsd = actualMarginUsd * tpMultiple;
+      startSession({ side, targetProfitUsd: actualTargetProfitUsd, tpMultiple, entryPrice: filledPrice });
+      setRoute('/run');
+      const liqPrice = calculateLiqPrice(filledPrice, side);
+      const targetPrice = calculateTargetPrice(filledPrice, side, actualTargetProfitUsd);
+      updateSession({
+        entryPrice: filledPrice,
+        currentPrice: filledPrice,
+        liqPrice,
+        targetPrice,
+        orderId: filled.oid,
+        marginUsd: actualMarginUsd,
+        targetProfitUsd: actualTargetProfitUsd,
+      });
+      if (tpStatus?.error) {
+        pushToast({ kind: 'error', message: `止盈单失败：${tpStatus.error}` });
+      } else {
+        pushToast({ kind: 'success', message: '已挂止盈单（限价）。' });
+      }
+    } catch (error: any) {
+      if (isUserRejected(error)) {
+        pushToast({ kind: 'info', message: '已取消钱包签名。' });
+        return;
+      }
+      const rawMessage = typeof error?.message === 'string' ? error.message : '';
+      const friendly =
+        rawMessage.includes('not been authorized') || rawMessage.includes('WalletConnect')
+          ? '钱包连接未授权，请关闭 WalletConnect 或确认允许域名。'
+          : rawMessage
+            ? `下单失败：${rawMessage}`
+            : '下单失败，宇宙在卡顿。';
+      pushToast({ kind: 'error', message: friendly });
     } finally {
       setIsSubmitting(false);
     }
@@ -108,27 +200,76 @@ export const TradePage: React.FC = () => {
         animate={{ opacity: 1, x: 0 }}
         className="rounded-3xl border-2 border-white/10 bg-black/40 p-6"
       >
-        <h2 className="text-2xl font-black uppercase">目标收益 (USDC)</h2>
+        <h2 className="text-2xl font-black uppercase">目标倍数</h2>
         <div className="mt-4 grid grid-cols-2 gap-3">
-          {TARGET_PROFIT_OPTIONS.map((profit) => {
-            const tier = getCrownTier(profit);
+          {TP_MULTIPLE_OPTIONS.map((multiple) => {
+            const tier = getCrownTier(DEFAULT_MARGIN_USD * multiple);
             return (
-            <button
-              key={profit}
-              onClick={() => setTargetProfitUsd(profit)}
-              className={`rounded-2xl border-2 px-4 py-3 text-sm font-black uppercase transition-all ${
-                targetProfitUsd === profit
-                  ? 'border-primary bg-primary text-black shadow-[0_0_20px_rgba(205,43,238,0.6)]'
-                  : 'border-white/10 bg-black/30 text-white/60 hover:border-primary/60'
-              }`}
-            >
-              <div className="flex flex-col items-center gap-1">
-                <span>{profit} U</span>
-                <span className={`text-[10px] ${tier.color}`}>{tier.name}</span>
-              </div>
-            </button>
-          );})}
+              <button
+                key={multiple}
+                onClick={() => {
+                  setTpMultiple(multiple);
+                  setCustomMultiple('');
+                }}
+                className={`rounded-2xl border-2 px-4 py-3 text-sm font-black uppercase transition-all ${
+                  tpMultiple === multiple && customMultiple === ''
+                    ? 'border-primary bg-primary text-black shadow-[0_0_20px_rgba(205,43,238,0.6)]'
+                    : 'border-white/10 bg-black/30 text-white/60 hover:border-primary/60'
+                }`}
+              >
+                <div className="flex flex-col items-center gap-1">
+                  <span>翻 {multiple} 倍</span>
+                  <span className={`text-[10px] ${tier.color}`}>{tier.name}</span>
+                </div>
+              </button>
+            );
+          })}
+          <div className="col-span-2 rounded-2xl border-2 border-white/10 bg-black/30 px-4 py-3 text-sm font-black uppercase text-white/60">
+            <div className="flex flex-wrap items-center gap-3">
+              <span>翻自定义倍数</span>
+              <input
+                value={customMultiple}
+                onChange={(event) => {
+                  const next = event.target.value;
+                  setCustomMultiple(next);
+                  const parsed = Number(next);
+                  if (Number.isFinite(parsed) && parsed > 0) {
+                    setTpMultiple(parsed);
+                  }
+                }}
+                placeholder="0.05 起"
+                className="w-28 rounded-full border border-white/20 bg-black/40 px-3 py-1 text-sm font-bold text-white outline-none"
+              />
+              <span className="text-xs font-mono uppercase text-white/40">最低 0.05 倍</span>
+            </div>
+          </div>
         </div>
+        <div className="mt-4 text-xs font-mono uppercase text-white/50">
+          目标收益约 {targetProfitUsd.toFixed(3)}U
+        </div>
+      </motion.div>
+
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="md:col-span-2 rounded-3xl border-2 border-white/10 bg-black/40 p-4"
+      >
+        <div className="flex items-center justify-between px-2 pb-3 text-xs font-mono uppercase text-white/60">
+          <span>BTC 走势预览</span>
+          <span>{referencePrice ? `参考价 ${formatPrice(referencePrice)}` : '实时价加载中'}</span>
+        </div>
+        <PriceChart
+          candles={candles}
+          priceLines={
+            priceGuides
+              ? [
+                  { price: priceGuides.liqPrice, color: '#ff3333', title: '💩 爆仓' },
+                  { price: priceGuides.targetPrice, color: '#0bda7a', title: '🎊 止盈' },
+                ]
+              : undefined
+          }
+          rangePrices={priceGuides ? [priceGuides.liqPrice, priceGuides.targetPrice] : undefined}
+        />
       </motion.div>
 
       <motion.div

@@ -1,8 +1,8 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { useAppStore } from '../store';
-import { DEFAULT_MARGIN_USD, LEVERAGE } from '../constants';
-import { getCrownTierById, getHighestCrownTier, getLuckSummary, getStreakDays, getSuccessRate, getTodayCount } from '../utils';
+import { CROWN_TIERS, DEFAULT_MARGIN_USD, LEVERAGE } from '../constants';
+import { getCrownTierById, getLuckSummary, getStreakDays, getSuccessRate, getTodayCount } from '../utils';
 import { StatCard } from '../components/StatCard';
 
 export const HomePage: React.FC = () => {
@@ -13,9 +13,6 @@ export const HomePage: React.FC = () => {
   const setRoute = useAppStore((state) => state.setRoute);
 
   const luck = getLuckSummary(lastSession);
-  const highestTierId = getHighestCrownTier(crownInventory);
-  const highestTier = highestTierId ? getCrownTierById(highestTierId) : null;
-  const crownCount = highestTierId ? crownInventory[highestTierId].intact : 0;
 
   return (
     <div className="flex flex-col gap-6">
@@ -28,7 +25,7 @@ export const HomePage: React.FC = () => {
           <div>
             <div className="text-xs font-mono uppercase text-primary/80">每日实盘占卜 · LuckyTrade</div>
             <h2 className="text-3xl font-black uppercase leading-tight md:text-4xl font-display">
-              用 100x 去问宇宙
+              用 {LEVERAGE}x 去问宇宙
               <span className="ml-2">🔮</span>
             </h2>
             <p className="mt-2 max-w-xl text-sm text-white/70">
@@ -60,20 +57,43 @@ export const HomePage: React.FC = () => {
               <div className="text-xs font-mono uppercase text-white/50">别眨眼！</div>
             </div>
           </div>
-          {highestTier ? (
-            <div className={`mt-4 inline-flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-bold uppercase ${highestTier.badge} ${highestTier.color}`}>
-              👑 好运皇冠 · {highestTier.name} · x{crownCount}
-            </div>
-          ) : (
-            <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/40 px-4 py-2 text-xs font-bold uppercase text-white/60">
-              👑 还没有皇冠，先来一单
-            </div>
-          )}
+          <div className="mt-4 flex flex-wrap gap-2 text-xs font-bold uppercase">
+            {CROWN_TIERS.filter((tier) => crownInventory[tier.id] > 0).map((tier) => (
+              <div
+                key={tier.id}
+                className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 ${tier.badge} ${tier.color}`}
+              >
+                {tier.emoji} {tier.label} x{crownInventory[tier.id]}
+              </div>
+            ))}
+            {CROWN_TIERS.every((tier) => crownInventory[tier.id] === 0) && (
+              <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/40 px-4 py-2 text-xs font-bold uppercase text-white/60">
+                还没有冠冕，先去占卜一把
+              </div>
+            )}
+          </div>
           {lastCrownEvent && lastCrownEvent.upgrades.length > 0 && (
             <div className="mt-3 text-xs font-mono uppercase text-white/50">
-              合成完成：{lastCrownEvent.upgrades.map((tierId) => getCrownTierById(tierId).label).join(' + ')}
+              合成完成：{lastCrownEvent.upgrades.map((id) => getCrownTierById(id).label).join(' + ')}
             </div>
           )}
+          <div className="mt-5 rounded-2xl border border-white/10 bg-black/30 p-4">
+            <div className="text-xs font-mono uppercase text-white/50">冠冕说明</div>
+            <div className="mt-3 grid gap-2 text-xs text-white/70 md:grid-cols-2">
+              {CROWN_TIERS.map((tier) => (
+                <div key={tier.id} className={`rounded-2xl border px-3 py-2 ${tier.badge} ${tier.color}`}>
+                  <div className="flex items-center gap-2 font-bold uppercase">
+                    <span className="text-base">{tier.emoji}</span>
+                    <span>{tier.label}</span>
+                    <span className="text-white/50">· {tier.name}</span>
+                  </div>
+                  <div className="mt-1 text-[10px] uppercase text-white/50">
+                    {tier.nickname} · 好运 {tier.luck}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
         <div className="rounded-3xl border-2 border-white/10 bg-black/40 p-6">
           <h3 className="text-lg font-black uppercase">玩法说明</h3>

@@ -1,5 +1,5 @@
-import { encode } from '@msgpack/msgpack';
-import { ethers, getBytes, keccak256 } from 'ethers';
+import { formatPrice, formatSize } from '@nktkas/hyperliquid/utils';
+import { signL1Action } from '@nktkas/hyperliquid/signing';
 import type { WalletClient } from 'viem';
 
 const API_URL = 'https://api.hyperliquid.xyz';
@@ -7,61 +7,21 @@ const IS_MAINNET = true;
 const COIN_SYMBOL = 'BTC';
 const PERP_SYMBOL = 'BTC-PERP';
 
-const phantomDomain = {
-  name: 'Exchange',
-  version: '1',
-  chainId: 1337,
-  verifyingContract: '0x0000000000000000000000000000000000000000',
-};
-
-const agentTypes = {
-  Agent: [
-    { name: 'source', type: 'string' },
-    { name: 'connectionId', type: 'bytes32' },
-  ],
-} as const;
-
 const PHANTOM_CHAIN_ID = 1337;
+const DEFAULT_SLIPPAGE = 0.05;
+const PERP_PRICE_DECIMALS = 6;
 
-const addressToBytes = (address: string) => getBytes(address);
+const roundToSig = (value: number, sig = 5) => Number(Number(value).toPrecision(sig));
 
-const normalizeTrailingZeros = (obj: any): any => {
-  if (!obj || typeof obj !== 'object') return obj;
-  if (Array.isArray(obj)) return obj.map((item) => normalizeTrailingZeros(item));
-  const result = { ...obj };
-  for (const key of Object.keys(result)) {
-    const value = result[key];
-    if (value && typeof value === 'object') {
-      result[key] = normalizeTrailingZeros(value);
-    } else if ((key === 'p' || key === 's') && typeof value === 'string') {
-      result[key] = value.replace(/\.?0+$/, '');
-    }
-  }
-  return result;
+const roundToDecimals = (value: number, decimals: number) => {
+  const factor = 10 ** decimals;
+  return Math.round(value * factor) / factor;
 };
 
-const actionHash = (action: unknown, vaultAddress: string | null, nonce: number) => {
-  const normalizedAction = normalizeTrailingZeros(action);
-  const msgPackBytes = encode(normalizedAction);
-  const additionalBytesLength = vaultAddress === null ? 9 : 29;
-  const data = new Uint8Array(msgPackBytes.length + additionalBytesLength);
-  data.set(msgPackBytes);
-  const view = new DataView(data.buffer);
-  view.setBigUint64(msgPackBytes.length, BigInt(nonce), false);
-  if (vaultAddress === null) {
-    view.setUint8(msgPackBytes.length + 8, 0);
-  } else {
-    view.setUint8(msgPackBytes.length + 8, 1);
-    data.set(addressToBytes(vaultAddress), msgPackBytes.length + 9);
-  }
-  return keccak256(data);
-};
-
-const floatToWire = (value: number) => {
-  const rounded = value.toFixed(8);
-  let normalized = rounded.replace(/\.?0+$/, '');
-  if (normalized === '-0') normalized = '0';
-  return normalized;
+const slippagePrice = (price: number, isBuy: boolean, slippage = DEFAULT_SLIPPAGE) => {
+  const adjusted = price * (isBuy ? 1 + slippage : 1 - slippage);
+  const roundedSig = roundToSig(adjusted, 5);
+  return roundToDecimals(roundedSig, PERP_PRICE_DECIMALS);
 };
 
 const toHexChainId = (id: number) => `0x${id.toString(16)}`;
@@ -155,18 +115,31 @@ const postExchange = async <T>(payload: any): Promise<T> => {
   return response.json() as Promise<T>;
 };
 
-let cachedAssetIndex: number | null = null;
+let cachedAssetInfo: { index: number; szDecimals: number } | null = null;
 
-const getAssetIndex = async () => {
-  if (cachedAssetIndex !== null) return cachedAssetIndex;
+const getAssetInfo = async () => {
+  if (cachedAssetInfo !== null) return cachedAssetInfo;
   const meta = await postInfo<any>({ type: 'meta' });
-  const universe = meta?.[0]?.universe ?? [];
+  const universe = meta?.universe ?? meta?.[0]?.universe ?? [];
   const index = universe.findIndex((asset: { name: string }) => asset.name === COIN_SYMBOL);
   if (index < 0) {
     throw new Error(`Asset ${COIN_SYMBOL} not found in meta`);
   }
-  cachedAssetIndex = index;
-  return index;
+  const szDecimals = Number(universe[index]?.szDecimals ?? 0);
+  cachedAssetInfo = { index, szDecimals: Number.isFinite(szDecimals) ? szDecimals : 0 };
+  return cachedAssetInfo;
+};
+
+const createWalletAdapter = (walletClient: WalletClient, address: string) => {
+  return {
+    signTypedData: (params: any) =>
+      walletClient.signTypedData({
+        ...params,
+        account: address as `0x${string}`,
+      }),
+    getAddresses: async () => [address as `0x${string}`],
+    getChainId: async () => walletClient.getChainId(),
+  };
 };
 
 export const getAllMids = async () => postInfo<Record<string, string>>({ type: 'allMids' });
@@ -193,6 +166,15 @@ export const fetchUsdcBalance = async (address: string) => {
   return Number.isFinite(withdrawable) ? withdrawable : 0;
 };
 
+export const fetchPositionSize = async (address: string) => {
+  const state = await getClearinghouseState(address);
+  const positions = state?.assetPositions ?? [];
+  const match = positions.find((item: any) => item?.position?.coin === COIN_SYMBOL);
+  const rawSize = match?.position?.szi ?? '0';
+  const size = Number(rawSize);
+  return Number.isFinite(size) ? size : 0;
+};
+
 export const placeMarketOrder = async (params: {
   walletClient: WalletClient;
   address: string;
@@ -202,16 +184,18 @@ export const placeMarketOrder = async (params: {
   originalChainId?: number;
 }) => {
   const { walletClient, address, isBuy, size, referencePrice, originalChainId } = params;
-  const assetIndex = await getAssetIndex();
-  const limitPx = referencePrice * (isBuy ? 1.005 : 0.995);
+  const assetInfo = await getAssetInfo();
+  const limitPx = slippagePrice(referencePrice, isBuy);
+  const limitPxWire = formatPrice(limitPx, assetInfo.szDecimals, 'perp');
+  const sizeWire = formatSize(size, assetInfo.szDecimals);
   const action = {
     type: 'order',
     orders: [
       {
-        a: assetIndex,
+        a: assetInfo.index,
         b: isBuy,
-        p: floatToWire(limitPx),
-        s: floatToWire(size),
+        p: limitPxWire,
+        s: sizeWire,
         r: false,
         t: { limit: { tif: 'Ioc' } },
       },
@@ -219,30 +203,88 @@ export const placeMarketOrder = async (params: {
     grouping: 'na',
   };
   const nonce = Date.now();
-  const hash = actionHash(action, null, nonce);
-  const phantomAgent = { source: IS_MAINNET ? 'a' : 'b', connectionId: hash };
   const signerChain = await ensurePhantomChain(walletClient);
   const restoreId = originalChainId ?? signerChain.originalChainId;
-  let signatureHex = '';
+  const wallet = createWalletAdapter(walletClient, address);
+  let signature;
   try {
-    signatureHex = await walletClient.signTypedData({
-      account: address as `0x${string}`,
-      domain: phantomDomain,
-      types: agentTypes,
-      primaryType: 'Agent',
-      message: phantomAgent,
+    signature = await signL1Action({
+      wallet,
+      action,
+      nonce,
+      isTestnet: !IS_MAINNET,
     });
   } finally {
     if (restoreId !== PHANTOM_CHAIN_ID) {
       await restoreChain(walletClient, restoreId);
     }
   }
-  const { r, s, v } = ethers.Signature.from(signatureHex);
-
   return postExchange<any>({
     action,
     nonce,
-    signature: { r, s, v },
+    signature,
+    vaultAddress: null,
+  });
+};
+
+export const placeMarketOrderWithTakeProfit = async (params: {
+  walletClient: WalletClient;
+  address: string;
+  isBuy: boolean;
+  size: number;
+  referencePrice: number;
+  takeProfitPrice: number;
+  originalChainId?: number;
+}) => {
+  const { walletClient, address, isBuy, size, referencePrice, takeProfitPrice, originalChainId } = params;
+  const assetInfo = await getAssetInfo();
+  const limitPx = slippagePrice(referencePrice, isBuy);
+  const limitPxWire = formatPrice(limitPx, assetInfo.szDecimals, 'perp');
+  const sizeWire = formatSize(size, assetInfo.szDecimals);
+  const triggerPxWire = formatPrice(takeProfitPrice, assetInfo.szDecimals, 'perp');
+  const action = {
+    type: 'order',
+    orders: [
+      {
+        a: assetInfo.index,
+        b: isBuy,
+        p: limitPxWire,
+        s: sizeWire,
+        r: false,
+        t: { limit: { tif: 'Ioc' } },
+      },
+      {
+        a: assetInfo.index,
+        b: !isBuy,
+        p: triggerPxWire,
+        s: sizeWire,
+        r: true,
+        t: { limit: { tif: 'Gtc' } },
+      },
+    ],
+    grouping: 'na',
+  };
+  const nonce = Date.now();
+  const signerChain = await ensurePhantomChain(walletClient);
+  const restoreId = originalChainId ?? signerChain.originalChainId;
+  const wallet = createWalletAdapter(walletClient, address);
+  let signature;
+  try {
+    signature = await signL1Action({
+      wallet,
+      action,
+      nonce,
+      isTestnet: !IS_MAINNET,
+    });
+  } finally {
+    if (restoreId !== PHANTOM_CHAIN_ID) {
+      await restoreChain(walletClient, restoreId);
+    }
+  }
+  return postExchange<any>({
+    action,
+    nonce,
+    signature,
     vaultAddress: null,
   });
 };
@@ -253,35 +295,143 @@ export const cancelOrder = async (params: {
   orderId: number;
 }) => {
   const { walletClient, address, orderId } = params;
-  const assetIndex = await getAssetIndex();
+  const assetInfo = await getAssetInfo();
   const action = {
     type: 'cancel',
-    cancels: [{ a: assetIndex, o: orderId }],
+    cancels: [{ a: assetInfo.index, o: orderId }],
   };
   const nonce = Date.now();
-  const hash = actionHash(action, null, nonce);
-  const phantomAgent = { source: IS_MAINNET ? 'a' : 'b', connectionId: hash };
   const { originalChainId, switched } = await ensurePhantomChain(walletClient);
-  let signatureHex = '';
+  const wallet = createWalletAdapter(walletClient, address);
+  let signature;
   try {
-    signatureHex = await walletClient.signTypedData({
-      account: address as `0x${string}`,
-      domain: phantomDomain,
-      types: agentTypes,
-      primaryType: 'Agent',
-      message: phantomAgent,
+    signature = await signL1Action({
+      wallet,
+      action,
+      nonce,
+      isTestnet: !IS_MAINNET,
     });
   } finally {
     if (switched) {
       await restoreChain(walletClient, originalChainId);
     }
   }
-  const { r, s, v } = ethers.Signature.from(signatureHex);
 
   return postExchange<any>({
     action,
     nonce,
-    signature: { r, s, v },
+    signature,
+    vaultAddress: null,
+  });
+};
+
+export const closePositionMarket = async (params: {
+  walletClient: WalletClient;
+  address: string;
+  referencePrice: number;
+  positionSize: number;
+  originalChainId?: number;
+}) => {
+  const { walletClient, address, referencePrice, positionSize, originalChainId } = params;
+  if (!Number.isFinite(positionSize) || positionSize === 0) {
+    return null;
+  }
+  const assetInfo = await getAssetInfo();
+  const isBuy = positionSize < 0;
+  const size = Math.abs(positionSize);
+  const limitPx = slippagePrice(referencePrice, isBuy);
+  const limitPxWire = formatPrice(limitPx, assetInfo.szDecimals, 'perp');
+  const sizeWire = formatSize(size, assetInfo.szDecimals);
+  const action = {
+    type: 'order',
+    orders: [
+      {
+        a: assetInfo.index,
+        b: isBuy,
+        p: limitPxWire,
+        s: sizeWire,
+        r: true,
+        t: { limit: { tif: 'Ioc' } },
+      },
+    ],
+    grouping: 'na',
+  };
+  const nonce = Date.now();
+  const signerChain = await ensurePhantomChain(walletClient);
+  const restoreId = originalChainId ?? signerChain.originalChainId;
+  const wallet = createWalletAdapter(walletClient, address);
+  let signature;
+  try {
+    signature = await signL1Action({
+      wallet,
+      action,
+      nonce,
+      isTestnet: !IS_MAINNET,
+    });
+  } finally {
+    if (restoreId !== PHANTOM_CHAIN_ID) {
+      await restoreChain(walletClient, restoreId);
+    }
+  }
+  return postExchange<any>({
+    action,
+    nonce,
+    signature,
+    vaultAddress: null,
+  });
+};
+
+export const placeTakeProfitOrder = async (params: {
+  walletClient: WalletClient;
+  address: string;
+  triggerPrice: number;
+  positionSize: number;
+  originalChainId?: number;
+}) => {
+  const { walletClient, address, triggerPrice, positionSize, originalChainId } = params;
+  if (!Number.isFinite(positionSize) || positionSize === 0) {
+    return null;
+  }
+  const assetInfo = await getAssetInfo();
+  const isBuy = positionSize < 0;
+  const size = Math.abs(positionSize);
+  const triggerPxWire = formatPrice(triggerPrice, assetInfo.szDecimals, 'perp');
+  const sizeWire = formatSize(size, assetInfo.szDecimals);
+  const action = {
+    type: 'order',
+    orders: [
+      {
+        a: assetInfo.index,
+        b: isBuy,
+        p: triggerPxWire,
+        s: sizeWire,
+        r: true,
+        t: { trigger: { isMarket: true, triggerPx: triggerPxWire, tpsl: 'tp' } },
+      },
+    ],
+    grouping: 'na',
+  };
+  const nonce = Date.now();
+  const signerChain = await ensurePhantomChain(walletClient);
+  const restoreId = originalChainId ?? signerChain.originalChainId;
+  const wallet = createWalletAdapter(walletClient, address);
+  let signature;
+  try {
+    signature = await signL1Action({
+      wallet,
+      action,
+      nonce,
+      isTestnet: !IS_MAINNET,
+    });
+  } finally {
+    if (restoreId !== PHANTOM_CHAIN_ID) {
+      await restoreChain(walletClient, restoreId);
+    }
+  }
+  return postExchange<any>({
+    action,
+    nonce,
+    signature,
     vaultAddress: null,
   });
 };

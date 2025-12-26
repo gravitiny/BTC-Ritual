@@ -33,7 +33,12 @@ interface AppState {
   toasts: ToastMessage[];
   setRoute: (route: AppRoute) => void;
   setWalletBalanceUsdc: (balance: number | null) => void;
-  startSession: (payload: { side: TradeSide; targetProfitUsd: number; entryPrice?: number }) => TradeSession;
+  startSession: (payload: {
+    side: TradeSide;
+    targetProfitUsd: number;
+    tpMultiple: number;
+    entryPrice?: number;
+  }) => TradeSession;
   updateSession: (update: Partial<TradeSession>) => void;
   resumeSession: (session: TradeSession) => void;
   completeSession: (status: TradeStatus) => void;
@@ -76,7 +81,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   toasts: [],
   setRoute: (route) => set({ route }),
   setWalletBalanceUsdc: (balance) => set({ walletBalanceUsdc: balance }),
-  startSession: ({ side, targetProfitUsd, entryPrice: providedEntry }) => {
+  startSession: ({ side, targetProfitUsd, tpMultiple, entryPrice: providedEntry }) => {
     const entryPrice = providedEntry ?? randomizeEntryPrice();
     const liqPrice = calculateLiqPrice(entryPrice, side);
     const targetPrice = calculateTargetPrice(entryPrice, side, targetProfitUsd);
@@ -85,6 +90,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       date: getTodayDate(),
       side,
       targetProfitUsd,
+      tpMultiple,
       marginUsd: DEFAULT_MARGIN_USD,
       leverage: LEVERAGE,
       status: 'running',
@@ -120,12 +126,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!current) return;
     const completed = { ...current, status, endedAt: Date.now() };
     const history = get().historySessions.map((session) => (session.id === completed.id ? completed : session));
-    const crownTier = getCrownTier(current.targetProfitUsd);
-    const broken = status !== 'success';
-    const crownResult = applyCrownReward(get().crownInventory, crownTier.id, broken);
+    const isSuccess = status === 'success';
+    const awardedTier = isSuccess ? getCrownTier(current.targetProfitUsd).id : 'fragment';
+    const crownResult = applyCrownReward(get().crownInventory, awardedTier);
     const crownEvent: CrownEvent = {
-      awardedTierId: crownTier.id,
-      broken,
+      awardedTierId: awardedTier,
+      awardedCount: 1,
       upgrades: crownResult.upgrades,
       createdAt: Date.now(),
     };

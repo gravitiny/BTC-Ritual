@@ -25,10 +25,17 @@ export const ResultModal: React.FC<ResultModalProps> = ({ open, onClose }) => {
   if (!open || !lastSession || !lastCrownEvent) return null;
 
   const status = lastSession.status;
-  const crownTier = getCrownTierById(lastCrownEvent.awardedTierId);
-  const crownLabel = lastCrownEvent.broken ? `碎裂${crownTier.label}` : crownTier.label;
+  const awardedTier = getCrownTierById(lastCrownEvent.awardedTierId);
+  const rewardLabel = `获得${awardedTier.label} x${lastCrownEvent.awardedCount}`;
   const copyList = RESULT_COPY[status] || RESULT_COPY.aborted;
   const copy = copyList[Math.floor(Math.random() * copyList.length)];
+  const upgradeSummary =
+    lastCrownEvent.upgrades.length > 0
+      ? lastCrownEvent.upgrades.reduce<Record<string, number>>((acc, tierId) => {
+          acc[tierId] = (acc[tierId] ?? 0) + 1;
+          return acc;
+        }, {})
+      : null;
 
   const toneStyles = {
     success: 'border-success bg-success/10',
@@ -54,11 +61,11 @@ export const ResultModal: React.FC<ResultModalProps> = ({ open, onClose }) => {
           {!showDetails ? (
             <div className="flex flex-col items-center gap-4">
               <motion.div animate={{ rotate: 360 }} transition={{ duration: 1.6, repeat: Infinity, ease: 'linear' }}>
-                {lastCrownEvent.broken ? '💥' : '👑'}
+                {lastCrownEvent.awardedTierId === 'fragment' ? '🧩' : '👑'}
               </motion.div>
               <div className="text-lg font-black uppercase">结算中...</div>
-              <div className={`rounded-full border px-4 py-2 text-xs font-bold uppercase ${crownTier.badge} ${crownTier.color}`}>
-                好运皇冠 · {crownTier.name}
+              <div className={`rounded-full border px-4 py-2 text-xs font-bold uppercase ${awardedTier.badge} ${awardedTier.color}`}>
+                {rewardLabel}
               </div>
             </div>
           ) : (
@@ -70,7 +77,17 @@ export const ResultModal: React.FC<ResultModalProps> = ({ open, onClose }) => {
                 <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-2">方向 {lastSession.side}</div>
                 <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-2">目标 {lastSession.targetProfitUsd}U</div>
                 <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-2">开仓 {formatPrice(lastSession.entryPrice)}</div>
-                <div className={`rounded-2xl border px-4 py-2 ${crownTier.badge} ${crownTier.color}`}>皇冠 {crownLabel}</div>
+                <div className={`rounded-2xl border px-4 py-2 ${awardedTier.badge} ${awardedTier.color}`}>
+                  奖励 {awardedTier.label} +{lastCrownEvent.awardedCount}
+                </div>
+                {upgradeSummary && (
+                  <div className="rounded-2xl border border-white/20 bg-black/40 px-4 py-2 text-white/70">
+                    合成{' '}
+                    {Object.entries(upgradeSummary)
+                      .map(([tierId, count]) => `${getCrownTierById(tierId as any).label} x${count}`)
+                      .join(' + ')}
+                  </div>
+                )}
               </div>
               <button
                 onClick={onClose}

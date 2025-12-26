@@ -1,6 +1,5 @@
 import React, { useEffect } from 'react';
-import { ConnectButton } from '@rainbow-me/rainbowkit';
-import { useAccount } from 'wagmi';
+import { useAccount, useConnect, useDisconnect } from 'wagmi';
 import { useAppStore } from '../store';
 import { formatUsd, shortAddress } from '../utils';
 import { ToastStack } from './Toast';
@@ -11,6 +10,7 @@ const navItems = [
   { label: '下单', route: '/trade' as const },
   { label: '历史', route: '/history' as const },
 ];
+const DEPOSIT_URL = 'https://app.hyperliquid.xyz/trade';
 
 export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const route = useAppStore((state) => state.route);
@@ -18,6 +18,8 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
   const walletBalanceUsdc = useAppStore((state) => state.walletBalanceUsdc);
   const setWalletBalanceUsdc = useAppStore((state) => state.setWalletBalanceUsdc);
   const { address, isConnected } = useAccount();
+  const { connectAsync, connectors, isPending } = useConnect();
+  const { disconnectAsync } = useDisconnect();
 
   useEffect(() => {
     if (!address || !isConnected) {
@@ -65,20 +67,27 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
                 <span className="text-success">{walletBalanceUsdc === null ? 'USDC 加载中' : `${formatUsd(walletBalanceUsdc)} USDC`}</span>
               </span>
             )}
-            <ConnectButton.Custom>
-              {({ account, mounted, openConnectModal, openAccountModal }) => {
-                const ready = mounted;
-                const connected = ready && account;
-                return (
-                  <button
-                    onClick={connected ? openAccountModal : openConnectModal}
-                    className="rounded-full border-2 border-primary bg-black px-4 py-2 text-xs font-black uppercase text-primary shadow-[0_0_15px_rgba(205,43,238,0.6)] transition-all hover:scale-105"
-                  >
-                    {connected ? '钱包已连接' : '连接钱包'}
-                  </button>
-                );
+            <button
+              onClick={() => window.open(DEPOSIT_URL, '_blank', 'noopener,noreferrer')}
+              className="rounded-full border-2 border-white/20 bg-black/30 px-3 py-2 text-xs font-black uppercase text-white/80 transition-all hover:-translate-y-0.5 hover:border-white/60"
+            >
+              充值
+            </button>
+            <button
+              onClick={async () => {
+                if (isConnected) {
+                  await disconnectAsync();
+                  return;
+                }
+                const injected = connectors.find((connector) => connector.id === 'injected') ?? connectors[0];
+                if (!injected) return;
+                await connectAsync({ connector: injected });
               }}
-            </ConnectButton.Custom>
+              className="rounded-full border-2 border-primary bg-black px-4 py-2 text-xs font-black uppercase text-primary shadow-[0_0_15px_rgba(205,43,238,0.6)] transition-all hover:scale-105 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={isPending}
+            >
+              {isConnected ? '钱包已连接' : isPending ? '连接中...' : '连接钱包'}
+            </button>
           </div>
         </div>
       </header>

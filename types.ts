@@ -4,18 +4,13 @@ export type TradeStatus = 'idle' | 'running' | 'success' | 'fail' | 'aborted';
 
 export type AppRoute = '/' | '/trade' | '/run' | '/history';
 
-export type CrownTierId = 'green' | 'blue' | 'purple' | 'orange' | 'prism';
+export type CrownTierId = 'fragment' | 'green' | 'blue' | 'purple' | 'orange' | 'prism';
 
-export interface CrownInventoryEntry {
-  intact: number;
-  broken: number;
-}
-
-export type CrownInventory = Record<CrownTierId, CrownInventoryEntry>;
+export type CrownInventory = Record<CrownTierId, number>;
 
 export interface CrownEvent {
   awardedTierId: CrownTierId;
-  broken: boolean;
+  awardedCount: number;
   upgrades: CrownTierId[];
   createdAt: number;
 }
@@ -25,6 +20,7 @@ export interface TradeSession {
   date: string; // YYYY-MM-DD
   side: TradeSide;
   targetProfitUsd: number;
+  tpMultiple: number;
   marginUsd: number;
   leverage: number;
   status: TradeStatus;

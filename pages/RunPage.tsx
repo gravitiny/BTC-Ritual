@@ -8,7 +8,7 @@ import { formatPrice, priceToLuck } from '../utils';
 import { RelativeBar } from '../components/RelativeBar';
 import { PriceChart } from '../components/PriceChart';
 import { ResultModal } from '../components/ResultModal';
-import { cancelOrder, getAllMids, getCandleSnapshot } from '../services/hyperliquid';
+import { closePositionMarket, fetchPositionSize, getAllMids, getCandleSnapshot } from '../services/hyperliquid';
 
 const buildCandlesFromSnapshot = (snapshot: any[]): CandlestickData[] => {
   return snapshot.map((candle) => ({
@@ -27,6 +27,7 @@ export const RunPage: React.FC = () => {
   const completeSession = useAppStore((state) => state.completeSession);
   const abortSession = useAppStore((state) => state.abortSession);
   const setRoute = useAppStore((state) => state.setRoute);
+  const pushToast = useAppStore((state) => state.pushToast);
   const { address } = useAccount();
   const { data: walletClient } = useWalletClient();
 
@@ -35,7 +36,13 @@ export const RunPage: React.FC = () => {
   const [showResult, setShowResult] = useState(false);
   const endedRef = useRef(false);
   const luckPathRef = useRef<number[]>([]);
+  const hadPositionRef = useRef(false);
   const session = currentSession ?? lastSession;
+  const isUserRejected = (error: any) => {
+    const code = error?.code;
+    const message = typeof error?.message === 'string' ? error.message.toLowerCase() : '';
+    return code === 4001 || message.includes('user rejected') || message.includes('rejected');
+  };
 
   useEffect(() => {
     if (!session) {
@@ -125,17 +132,63 @@ export const RunPage: React.FC = () => {
     };
   }, [currentSession, completeSession, updateSession]);
 
+  useEffect(() => {
+    if (!currentSession || !address) return;
+    const pollTimer = window.setInterval(() => {
+      if (endedRef.current) return;
+      fetchPositionSize(address)
+        .then((size) => {
+          if (Math.abs(size) > 0) {
+            hadPositionRef.current = true;
+            return;
+          }
+          if (hadPositionRef.current) {
+            endedRef.current = true;
+            const hitTarget =
+              currentSession.side === 'LONG'
+                ? currentSession.currentPrice >= currentSession.targetPrice
+                : currentSession.currentPrice <= currentSession.targetPrice;
+            if (hitTarget) {
+              completeSession('success');
+            } else {
+              abortSession();
+            }
+            setShowResult(true);
+          }
+        })
+        .catch(() => {});
+    }, 3000);
+    return () => {
+      window.clearInterval(pollTimer);
+    };
+  }, [address, abortSession, completeSession, currentSession]);
+
   if (!session) return null;
 
   const progressLabel =
     luckValue >= 0.7 ? '离🎊只差一步' : luckValue <= 0.3 ? '别眨眼，风险高' : '摇摆中…';
 
   const handleAbort = async () => {
-    if (session.orderId && typeof session.orderId === 'number' && walletClient && address) {
+    if (walletClient && address) {
       try {
-        await cancelOrder({ walletClient, address, orderId: session.orderId });
+        const positionSize = await fetchPositionSize(address);
+        const mids = await getAllMids();
+        const referencePrice = Number(mids.BTC ?? 0);
+        if (Number.isFinite(referencePrice) && referencePrice > 0) {
+          await closePositionMarket({
+            walletClient,
+            address,
+            referencePrice,
+            positionSize,
+          });
+          pushToast({ kind: 'success', message: '已尝试市价平仓。' });
+        }
       } catch (error) {
-        // Ignore cancel failure; still abort locally.
+        if (isUserRejected(error)) {
+          pushToast({ kind: 'info', message: '已取消钱包签名。' });
+          return;
+        }
+        pushToast({ kind: 'error', message: '平仓失败，请检查钱包签名。' });
       }
     }
     abortSession();
@@ -177,7 +230,7 @@ export const RunPage: React.FC = () => {
 
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div className="text-sm font-mono uppercase text-white/60">
-          {session.side} · {session.targetProfitUsd}U 目标 · 100x
+          {session.side} · 翻 {session.tpMultiple ?? 1} 倍 · 目标 {session.targetProfitUsd}U · {session.leverage}x
         </div>
         <div className="flex flex-wrap gap-3">
           <button

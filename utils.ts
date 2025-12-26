@@ -66,9 +66,9 @@ export const getLuckSummary = (session: TradeSession | null) => {
 };
 
 export const getCrownTier = (targetProfitUsd: number) => {
-  const sorted = [...CROWN_TIERS].sort((a, b) => a.profit - b.profit);
-  let chosen = sorted[0];
-  for (const tier of sorted) {
+  const rewardTiers = CROWN_TIERS.filter((tier) => tier.id !== 'fragment').sort((a, b) => a.profit - b.profit);
+  let chosen = rewardTiers[0];
+  for (const tier of rewardTiers) {
     if (targetProfitUsd >= tier.profit) {
       chosen = tier;
     }
@@ -81,60 +81,29 @@ export const getCrownTierById = (id: CrownTierId) => {
 };
 
 export const createEmptyCrownInventory = (): CrownInventory => ({
-  green: { intact: 0, broken: 0 },
-  blue: { intact: 0, broken: 0 },
-  purple: { intact: 0, broken: 0 },
-  orange: { intact: 0, broken: 0 },
-  prism: { intact: 0, broken: 0 },
+  fragment: 0,
+  green: 0,
+  blue: 0,
+  purple: 0,
+  orange: 0,
+  prism: 0,
 });
 
-export const getHighestCrownTier = (inventory: CrownInventory) => {
-  const order: CrownTierId[] = ['prism', 'orange', 'purple', 'blue', 'green'];
-  return order.find((id) => inventory[id].intact > 0) ?? null;
-};
+const crownOrder: CrownTierId[] = ['fragment', 'green', 'blue', 'purple', 'orange', 'prism'];
 
-export const applyCrownReward = (
-  inventory: CrownInventory,
-  tierId: CrownTierId,
-  broken: boolean
-) => {
-  const next: CrownInventory = JSON.parse(JSON.stringify(inventory));
-  if (broken) {
-    next[tierId].broken += 1;
-  } else {
-    next[tierId].intact += 1;
-  }
+export const applyCrownReward = (inventory: CrownInventory, awardedTierId: CrownTierId) => {
+  const next: CrownInventory = { ...inventory };
+  next[awardedTierId] += 1;
 
   const upgrades: CrownTierId[] = [];
-
-  while (next.green.broken >= 3) {
-    next.green.broken -= 3;
-    next.green.intact += 1;
-    upgrades.push('green');
-  }
-
-  while (next.green.intact >= 3) {
-    next.green.intact -= 3;
-    next.blue.intact += 1;
-    upgrades.push('blue');
-  }
-
-  while (next.blue.broken >= 3) {
-    next.blue.broken -= 3;
-    next.blue.intact += 1;
-    upgrades.push('blue');
-  }
-
-  while (next.blue.intact >= 3) {
-    next.blue.intact -= 3;
-    next.purple.intact += 1;
-    upgrades.push('purple');
-  }
-
-  while (next.orange.intact >= 3) {
-    next.orange.intact -= 3;
-    next.prism.intact += 1;
-    upgrades.push('prism');
+  for (let i = 0; i < crownOrder.length - 1; i += 1) {
+    const tier = crownOrder[i];
+    const nextTier = crownOrder[i + 1];
+    while (next[tier] >= 3) {
+      next[tier] -= 3;
+      next[nextTier] += 1;
+      upgrades.push(nextTier);
+    }
   }
 
   return { inventory: next, upgrades };

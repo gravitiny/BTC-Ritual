@@ -53,7 +53,7 @@ export const HistoryPage: React.FC = () => {
                   <span className="text-2xl">{statusEmoji[session.status]}</span>
                   <div>
                     <div className="font-bold uppercase">
-                      {session.date} · {session.side} · 目标 {session.targetProfitUsd}U
+                      {session.date} · {session.side} · 翻 {session.tpMultiple ?? 1} 倍 · 目标 {session.targetProfitUsd}U
                     </div>
                     <div className="text-xs text-white/60">{statusCopy[session.status]}</div>
                   </div>
