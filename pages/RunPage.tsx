@@ -230,7 +230,7 @@ export const RunPage: React.FC = () => {
 
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div className="text-sm font-mono uppercase text-white/60">
-          {session.side} · 翻 {session.tpMultiple ?? 1} 倍 · 目标 {session.targetProfitUsd}U · {session.leverage}x
+          {session.side} · 翻 {session.tpMultiple ?? 1} 倍 · 目标 {session.targetProfitUsd.toFixed(3)}U · {session.leverage}x
         </div>
         <div className="flex flex-wrap gap-3">
           <button

@@ -75,7 +75,9 @@ export const ResultModal: React.FC<ResultModalProps> = ({ open, onClose }) => {
               <p className="mt-2 text-sm text-white/70">{copy}</p>
               <div className="mt-6 flex flex-wrap items-center justify-center gap-3 text-xs uppercase">
                 <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-2">方向 {lastSession.side}</div>
-                <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-2">目标 {lastSession.targetProfitUsd}U</div>
+                <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-2">
+                  目标 {lastSession.targetProfitUsd.toFixed(3)}U
+                </div>
                 <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-2">开仓 {formatPrice(lastSession.entryPrice)}</div>
                 <div className={`rounded-2xl border px-4 py-2 ${awardedTier.badge} ${awardedTier.color}`}>
                   奖励 {awardedTier.label} +{lastCrownEvent.awardedCount}
