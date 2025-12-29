@@ -4,6 +4,7 @@ import { useAppStore } from '../store';
 import { RESULT_COPY } from '../constants';
 import { EmojiBurst } from './EmojiBurst';
 import { formatPrice, getCrownTierById } from '../utils';
+import { getTierText, t } from '../i18n';
 
 interface ResultModalProps {
   open: boolean;
@@ -13,6 +14,7 @@ interface ResultModalProps {
 export const ResultModal: React.FC<ResultModalProps> = ({ open, onClose }) => {
   const lastSession = useAppStore((state) => state.lastSession);
   const lastCrownEvent = useAppStore((state) => state.lastCrownEvent);
+  const language = useAppStore((state) => state.language);
   const [showDetails, setShowDetails] = useState(false);
 
   useEffect(() => {
@@ -26,8 +28,12 @@ export const ResultModal: React.FC<ResultModalProps> = ({ open, onClose }) => {
 
   const status = lastSession.status;
   const awardedTier = getCrownTierById(lastCrownEvent.awardedTierId);
-  const rewardLabel = `获得${awardedTier.label} x${lastCrownEvent.awardedCount}`;
-  const copyList = RESULT_COPY[status] || RESULT_COPY.aborted;
+  const awardedText = getTierText(awardedTier, language);
+  const rewardLabel = t(language, 'result.rewardLabel', {
+    label: awardedText.label,
+    count: lastCrownEvent.awardedCount,
+  });
+  const copyList = RESULT_COPY[language]?.[status] || RESULT_COPY[language].aborted;
   const copy = copyList[Math.floor(Math.random() * copyList.length)];
   const upgradeSummary =
     lastCrownEvent.upgrades.length > 0
@@ -63,30 +69,37 @@ export const ResultModal: React.FC<ResultModalProps> = ({ open, onClose }) => {
               <motion.div animate={{ rotate: 360 }} transition={{ duration: 1.6, repeat: Infinity, ease: 'linear' }}>
                 {lastCrownEvent.awardedTierId === 'fragment' ? '🧩' : '👑'}
               </motion.div>
-              <div className="text-lg font-black uppercase">结算中...</div>
+              <div className="text-lg font-black uppercase">{t(language, 'result.settling')}</div>
               <div className={`rounded-full border px-4 py-2 text-xs font-bold uppercase ${awardedTier.badge} ${awardedTier.color}`}>
                 {rewardLabel}
               </div>
             </div>
           ) : (
             <>
-              <div className="text-6xl">{status === 'success' ? '🎊' : status === 'fail' ? '💩' : '🫥'}</div>
-              <h2 className="mt-4 text-3xl font-black uppercase">{status === 'success' ? '好运命中' : status === 'fail' ? '爆仓来袭' : '中止结算'}</h2>
+              <div className="text-6xl">{status === 'success' ? '🎊' : status === 'fail' ? '💥' : '🫥'}</div>
+              <h2 className="mt-4 text-3xl font-black uppercase">{t(language, `result.title.${status}`)}</h2>
               <p className="mt-2 text-sm text-white/70">{copy}</p>
               <div className="mt-6 flex flex-wrap items-center justify-center gap-3 text-xs uppercase">
-                <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-2">方向 {lastSession.side}</div>
                 <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-2">
-                  目标 {lastSession.targetProfitUsd.toFixed(3)}U
+                  {t(language, 'result.label.side', { side: lastSession.side })}
                 </div>
-                <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-2">开仓 {formatPrice(lastSession.entryPrice)}</div>
+                <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-2">
+                  {t(language, 'result.label.target', { target: lastSession.targetProfitUsd.toFixed(3) })}
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-2">
+                  {t(language, 'result.label.entry', { price: formatPrice(lastSession.entryPrice) })}
+                </div>
                 <div className={`rounded-2xl border px-4 py-2 ${awardedTier.badge} ${awardedTier.color}`}>
-                  奖励 {awardedTier.label} +{lastCrownEvent.awardedCount}
+                  {t(language, 'result.label.reward', { label: awardedText.label, count: lastCrownEvent.awardedCount })}
                 </div>
                 {upgradeSummary && (
                   <div className="rounded-2xl border border-white/20 bg-black/40 px-4 py-2 text-white/70">
-                    合成{' '}
+                    {t(language, 'result.label.combine')}{' '}
                     {Object.entries(upgradeSummary)
-                      .map(([tierId, count]) => `${getCrownTierById(tierId as any).label} x${count}`)
+                      .map(([tierId, count]) => {
+                        const tierText = getTierText(getCrownTierById(tierId as any), language);
+                        return `${tierText.label} x${count}`;
+                      })
                       .join(' + ')}
                   </div>
                 )}
@@ -95,7 +108,7 @@ export const ResultModal: React.FC<ResultModalProps> = ({ open, onClose }) => {
                 onClick={onClose}
                 className="mt-8 rounded-full border-4 border-white bg-primary px-8 py-4 text-lg font-black uppercase text-black shadow-[0_0_30px_rgba(205,43,238,0.6)] transition-all hover:-translate-y-1"
               >
-                回到首页 🏠
+                {t(language, 'result.backHome')}
               </button>
             </>
           )}

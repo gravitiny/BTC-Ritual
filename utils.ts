@@ -1,5 +1,5 @@
 import { CROWN_TIERS, DEFAULT_MARGIN_USD, LEVERAGE, LUCK_TIER_LABELS, MOCK_BASE_PRICE, MOCK_PRICE_VARIANCE } from './constants';
-import { CrownInventory, CrownTierId, TradeSide, TradeSession } from './types';
+import { CrownInventory, CrownTierId, Language, TradeSide, TradeSession } from './types';
 
 export const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
 
@@ -56,20 +56,23 @@ export const getLuckTier = (value: number) => {
   return LUCK_TIER_LABELS.find((tier) => value >= tier.min) ?? LUCK_TIER_LABELS[LUCK_TIER_LABELS.length - 1];
 };
 
-export const getLuckSummary = (session: TradeSession | null) => {
+export const getLuckSummary = (session: TradeSession | null, language: Language = 'zh') => {
   if (!session || session.luckPath.length === 0) {
-    return { label: '未知', emoji: '🧿', value: 0.5 };
+    return { label: language === 'en' ? 'Unknown' : '未知', emoji: '🧿', value: 0.5 };
   }
   const lastLuck = session.luckPath[session.luckPath.length - 1];
   const tier = getLuckTier(lastLuck);
-  return { label: tier.label, emoji: tier.emoji, value: lastLuck };
+  const label = language === 'en' ? tier.labelEn : tier.label;
+  return { label, emoji: tier.emoji, value: lastLuck };
 };
 
-export const getCrownTier = (targetProfitUsd: number) => {
-  const rewardTiers = CROWN_TIERS.filter((tier) => tier.id !== 'fragment').sort((a, b) => a.profit - b.profit);
+export const getCrownTier = (tpMultiple: number) => {
+  const rewardTiers = CROWN_TIERS.filter((tier) => tier.id !== 'fragment').sort(
+    (a, b) => a.multiple - b.multiple
+  );
   let chosen = rewardTiers[0];
   for (const tier of rewardTiers) {
-    if (targetProfitUsd >= tier.profit) {
+    if (tpMultiple >= tier.multiple) {
       chosen = tier;
     }
   }
@@ -131,12 +134,22 @@ export const priceToLuck = (price: number, liqPrice: number, targetPrice: number
   return clamp((liqPrice - price) / (liqPrice - targetPrice), 0, 1);
 };
 
+export const calculatePnlUsd = (session: TradeSession, currentPrice?: number) => {
+  const price = currentPrice ?? session.currentPrice;
+  if (!Number.isFinite(price) || price <= 0 || session.entryPrice <= 0) return 0;
+  const notional = session.marginUsd * session.leverage;
+  const change = (price - session.entryPrice) / session.entryPrice;
+  const signedChange = session.side === 'LONG' ? change : -change;
+  return notional * signedChange;
+};
+
 export const parseRoute = (hash: string) => {
   const trimmed = hash.replace('#', '');
   if (trimmed.startsWith('/trade')) return '/trade';
   if (trimmed.startsWith('/run')) return '/run';
   if (trimmed.startsWith('/history')) return '/history';
-  return '/';
+  if (trimmed.startsWith('/leaderboard')) return '/leaderboard';
+  return '/trade';
 };
 
 export const getSuccessRate = (sessions: TradeSession[]) => {

@@ -2,7 +2,9 @@ export type TradeSide = 'LONG' | 'SHORT';
 
 export type TradeStatus = 'idle' | 'running' | 'success' | 'fail' | 'aborted';
 
-export type AppRoute = '/' | '/trade' | '/run' | '/history';
+export type AppRoute = '/' | '/trade' | '/run' | '/history' | '/leaderboard';
+
+export type Language = 'zh' | 'en';
 
 export type CrownTierId = 'fragment' | 'green' | 'blue' | 'purple' | 'orange' | 'prism';
 

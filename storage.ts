@@ -1,9 +1,10 @@
 import { CURRENT_SESSION_KEY, HISTORY_SESSIONS_KEY, MAX_HISTORY_DAYS } from './constants';
-import { CrownEvent, CrownInventory, TradeSession } from './types';
+import { CrownEvent, CrownInventory, Language, TradeSession } from './types';
 import { getTodayDate } from './utils';
 
 const CROWN_INVENTORY_KEY = 'crownInventory';
 const CROWN_EVENT_KEY = 'crownEvent';
+const LANGUAGE_KEY = 'appLanguage';
 
 const isBrowser = typeof window !== 'undefined';
 
@@ -130,6 +131,17 @@ export const saveCrownEvent = (event: CrownEvent | null) => {
     return;
   }
   window.localStorage.setItem(CROWN_EVENT_KEY, JSON.stringify(event));
+};
+
+export const loadLanguage = (): Language | null => {
+  if (!isBrowser) return null;
+  const raw = window.localStorage.getItem(LANGUAGE_KEY);
+  return raw === 'zh' || raw === 'en' ? raw : null;
+};
+
+export const saveLanguage = (language: Language) => {
+  if (!isBrowser) return;
+  window.localStorage.setItem(LANGUAGE_KEY, language);
 };
 
 export const pruneHistory = (sessions: TradeSession[]) => {

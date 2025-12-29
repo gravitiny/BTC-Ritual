@@ -15,6 +15,7 @@
     "@tanstack/react-query": "^5.56.2",
     "ethers": "6.13.5",
     "framer-motion": "^11.0.25",
+    "html-to-image": "^1.11.11",
     "hyperliquid": "^1.7.7",
     "lightweight-charts": "^4.2.0",
     "react": "^19.2.3",

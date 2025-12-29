@@ -9,6 +9,7 @@ import { RelativeBar } from '../components/RelativeBar';
 import { PriceChart } from '../components/PriceChart';
 import { ResultModal } from '../components/ResultModal';
 import { closePositionMarket, fetchPositionSize, getAllMids, getCandleSnapshot } from '../services/hyperliquid';
+import { t } from '../i18n';
 
 const buildCandlesFromSnapshot = (snapshot: any[]): CandlestickData[] => {
   return snapshot.map((candle) => ({
@@ -28,6 +29,7 @@ export const RunPage: React.FC = () => {
   const abortSession = useAppStore((state) => state.abortSession);
   const setRoute = useAppStore((state) => state.setRoute);
   const pushToast = useAppStore((state) => state.pushToast);
+  const language = useAppStore((state) => state.language);
   const { address } = useAccount();
   const { data: walletClient } = useWalletClient();
 
@@ -166,7 +168,11 @@ export const RunPage: React.FC = () => {
   if (!session) return null;
 
   const progressLabel =
-    luckValue >= 0.7 ? '离🎊只差一步' : luckValue <= 0.3 ? '别眨眼，风险高' : '摇摆中…';
+    luckValue >= 0.7
+      ? t(language, 'run.progressWin')
+      : luckValue <= 0.3
+        ? t(language, 'run.progressRisk')
+        : t(language, 'run.progressSwing');
 
   const handleAbort = async () => {
     if (walletClient && address) {
@@ -181,14 +187,14 @@ export const RunPage: React.FC = () => {
             referencePrice,
             positionSize,
           });
-          pushToast({ kind: 'success', message: '已尝试市价平仓。' });
+          pushToast({ kind: 'success', message: t(language, 'run.closeSuccess') });
         }
       } catch (error) {
         if (isUserRejected(error)) {
-          pushToast({ kind: 'info', message: '已取消钱包签名。' });
+          pushToast({ kind: 'info', message: t(language, 'run.closeCanceled') });
           return;
         }
-        pushToast({ kind: 'error', message: '平仓失败，请检查钱包签名。' });
+        pushToast({ kind: 'error', message: t(language, 'run.closeFailed') });
       }
     }
     abortSession();
@@ -204,19 +210,19 @@ export const RunPage: React.FC = () => {
       >
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <div className="text-xs font-mono uppercase text-white/50">当前价格</div>
+            <div className="text-xs font-mono uppercase text-white/50">{t(language, 'run.currentPrice')}</div>
             <div className="text-3xl font-black text-success">{formatPrice(session.currentPrice)}</div>
-            <div className="text-xs font-mono uppercase text-white/40">别眨眼！</div>
+            <div className="text-xs font-mono uppercase text-white/40">{t(language, 'run.blink')}</div>
           </div>
           <div className="flex flex-wrap gap-4 text-sm uppercase">
             <div className="rounded-2xl border border-white/10 bg-black/50 px-4 py-2">
-              开仓价 {formatPrice(session.entryPrice)}
+              {t(language, 'run.entryPrice', { price: formatPrice(session.entryPrice) })}
             </div>
             <div className="rounded-2xl border border-white/10 bg-black/50 px-4 py-2">
-              爆仓价 {formatPrice(session.liqPrice)}
+              {t(language, 'run.liqPrice', { price: formatPrice(session.liqPrice) })}
             </div>
             <div className="rounded-2xl border border-white/10 bg-black/50 px-4 py-2">
-              止盈价 {formatPrice(session.targetPrice)}
+              {t(language, 'run.tpPrice', { price: formatPrice(session.targetPrice) })}
             </div>
           </div>
         </div>
@@ -225,25 +231,30 @@ export const RunPage: React.FC = () => {
       <RelativeBar value={luckValue} label={progressLabel} />
 
       <div className="rounded-3xl border-2 border-white/10 bg-black/40 p-4">
-        <PriceChart candles={candles} />
+        <PriceChart candles={candles} timeframe="1m" language={language} />
       </div>
 
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div className="text-sm font-mono uppercase text-white/60">
-          {session.side} · 翻 {session.tpMultiple ?? 1} 倍 · 目标 {session.targetProfitUsd.toFixed(3)}U · {session.leverage}x
+          {t(language, 'run.sessionSummary', {
+            side: session.side,
+            multiple: session.tpMultiple ?? 1,
+            target: session.targetProfitUsd.toFixed(3),
+            leverage: session.leverage,
+          })}
         </div>
         <div className="flex flex-wrap gap-3">
           <button
             onClick={() => setRoute('/history')}
             className="rounded-full border-2 border-white/40 bg-black/40 px-6 py-3 text-sm font-black uppercase text-white/80 transition-all hover:-translate-y-1"
           >
-            关闭窗口 ✖️
+            {t(language, 'run.closeWindow')}
           </button>
           <button
             onClick={handleAbort}
             className="rounded-full border-4 border-white bg-failure px-6 py-3 text-sm font-black uppercase text-black shadow-[0_0_20px_rgba(255,51,51,0.6)] transition-all hover:-translate-y-1"
           >
-            中止这单 🛑
+            {t(language, 'run.abort')}
           </button>
         </div>
       </div>

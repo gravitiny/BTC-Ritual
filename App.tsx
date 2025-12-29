@@ -1,10 +1,10 @@
 import React, { useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Layout } from './components/Layout';
-import { HomePage } from './pages/HomePage';
 import { TradePage } from './pages/TradePage';
 import { RunPage } from './pages/RunPage';
 import { HistoryPage } from './pages/HistoryPage';
+import { LeaderboardPage } from './pages/LeaderboardPage';
 import { useAppStore } from './store';
 import { parseRoute } from './utils';
 
@@ -16,8 +16,10 @@ const routeToPage = (route: string) => {
       return <RunPage />;
     case '/history':
       return <HistoryPage />;
+    case '/leaderboard':
+      return <LeaderboardPage />;
     default:
-      return <HomePage />;
+      return <TradePage />;
   }
 };
 

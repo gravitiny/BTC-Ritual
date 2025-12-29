@@ -1,4 +1,6 @@
 import React from 'react';
+import { useAppStore } from '../store';
+import { t } from '../i18n';
 
 interface RelativeBarProps {
   value: number;
@@ -6,16 +8,20 @@ interface RelativeBarProps {
 }
 
 export const RelativeBar: React.FC<RelativeBarProps> = ({ value, label }) => {
+  const language = useAppStore((state) => state.language);
   const percent = Math.round(value * 100);
   const distanceToWin = Math.max(0, Math.round((1 - value) * 100));
   const distanceToFail = Math.max(0, Math.round(value * 100));
-  const statusText = value >= 0.5 ? `离🎊只差 ${distanceToWin}%` : `你离💩还有 ${distanceToFail}%`;
+  const statusText =
+    value >= 0.5
+      ? t(language, 'relative.win', { value: distanceToWin })
+      : t(language, 'relative.fail', { value: distanceToFail });
   return (
     <div className="rounded-3xl border-2 border-white/10 bg-black/40 p-4">
       <div className="mb-3 flex items-center justify-between text-sm font-bold uppercase text-white/70">
-        <span>爆仓 💩</span>
+        <span>{t(language, 'relative.liqLabel')}</span>
         <span>{label}</span>
-        <span>止盈 🎊</span>
+        <span>{t(language, 'relative.tpLabel')}</span>
       </div>
       <div className="relative h-5 rounded-full bg-gradient-to-r from-failure via-yellow-400 to-success">
         <div

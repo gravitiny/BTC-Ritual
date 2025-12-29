@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { AppRoute, CrownEvent, CrownInventory, ToastMessage, TradeSession, TradeSide, TradeStatus } from './types';
+import { AppRoute, CrownEvent, CrownInventory, Language, ToastMessage, TradeSession, TradeSide, TradeStatus } from './types';
 import { DEFAULT_MARGIN_USD, LEVERAGE } from './constants';
 import {
   applyCrownReward,
@@ -11,20 +11,24 @@ import {
   getTodayDate,
   randomizeEntryPrice,
 } from './utils';
+import { detectLanguage } from './i18n';
 import {
   loadCrownEvent,
   loadCrownInventory,
   loadCurrentSession,
   loadHistorySessions,
+  loadLanguage,
   saveCrownEvent,
   saveCrownInventory,
   saveCurrentSession,
   saveHistorySessions,
+  saveLanguage,
 } from './storage';
 
 interface AppState {
   route: AppRoute;
   walletBalanceUsdc: number | null;
+  language: Language;
   crownInventory: CrownInventory;
   lastCrownEvent: CrownEvent | null;
   currentSession: TradeSession | null;
@@ -33,10 +37,12 @@ interface AppState {
   toasts: ToastMessage[];
   setRoute: (route: AppRoute) => void;
   setWalletBalanceUsdc: (balance: number | null) => void;
+  setLanguage: (language: Language) => void;
   startSession: (payload: {
     side: TradeSide;
     targetProfitUsd: number;
     tpMultiple: number;
+    marginUsd: number;
     entryPrice?: number;
   }) => TradeSession;
   updateSession: (update: Partial<TradeSession>) => void;
@@ -58,6 +64,7 @@ const bootstrapSession = () => {
 
 const bootstrapInventory = () => loadCrownInventory() ?? createEmptyCrownInventory();
 const bootstrapCrownEvent = () => loadCrownEvent();
+const bootstrapLanguage = () => loadLanguage() ?? detectLanguage();
 const bootstrapCurrent = () => bootstrapSession();
 const bootstrapHistory = (current: TradeSession | null) => {
   const history = loadHistorySessions();
@@ -71,8 +78,9 @@ const initialCurrent = bootstrapCurrent();
 const initialHistory = bootstrapHistory(initialCurrent);
 
 export const useAppStore = create<AppState>((set, get) => ({
-  route: '/',
+  route: '/trade',
   walletBalanceUsdc: null,
+  language: bootstrapLanguage(),
   crownInventory: bootstrapInventory(),
   lastCrownEvent: bootstrapCrownEvent(),
   currentSession: initialCurrent,
@@ -81,17 +89,21 @@ export const useAppStore = create<AppState>((set, get) => ({
   toasts: [],
   setRoute: (route) => set({ route }),
   setWalletBalanceUsdc: (balance) => set({ walletBalanceUsdc: balance }),
-  startSession: ({ side, targetProfitUsd, tpMultiple, entryPrice: providedEntry }) => {
+  setLanguage: (language) => {
+    saveLanguage(language);
+    set({ language });
+  },
+  startSession: ({ side, targetProfitUsd, tpMultiple, marginUsd, entryPrice: providedEntry }) => {
     const entryPrice = providedEntry ?? randomizeEntryPrice();
     const liqPrice = calculateLiqPrice(entryPrice, side);
-    const targetPrice = calculateTargetPrice(entryPrice, side, targetProfitUsd);
+    const targetPrice = calculateTargetPrice(entryPrice, side, targetProfitUsd, LEVERAGE, marginUsd);
     const session: TradeSession = {
       id: createId(),
       date: getTodayDate(),
       side,
       targetProfitUsd,
       tpMultiple,
-      marginUsd: DEFAULT_MARGIN_USD,
+      marginUsd,
       leverage: LEVERAGE,
       status: 'running',
       luckPath: [0.5],
@@ -127,7 +139,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const completed = { ...current, status, endedAt: Date.now() };
     const history = get().historySessions.map((session) => (session.id === completed.id ? completed : session));
     const isSuccess = status === 'success';
-    const awardedTier = isSuccess ? getCrownTier(current.targetProfitUsd).id : 'fragment';
+    const awardedTier = isSuccess ? getCrownTier(current.tpMultiple).id : 'fragment';
     const crownResult = applyCrownReward(get().crownInventory, awardedTier);
     const crownEvent: CrownEvent = {
       awardedTierId: awardedTier,
