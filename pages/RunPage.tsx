@@ -9,6 +9,7 @@ import { RelativeBar } from '../components/RelativeBar';
 import { PriceChart } from '../components/PriceChart';
 import { ResultModal } from '../components/ResultModal';
 import { closePositionMarket, fetchPositionSize, getAllMids, getCandleSnapshot } from '../services/hyperliquid';
+import { updateTrade } from '../services/api';
 import { t } from '../i18n';
 
 const buildCandlesFromSnapshot = (snapshot: any[]): CandlestickData[] => {
@@ -30,6 +31,7 @@ export const RunPage: React.FC = () => {
   const setRoute = useAppStore((state) => state.setRoute);
   const pushToast = useAppStore((state) => state.pushToast);
   const language = useAppStore((state) => state.language);
+  const authToken = useAppStore((state) => state.authToken);
   const { address } = useAccount();
   const { data: walletClient } = useWalletClient();
 
@@ -62,6 +64,23 @@ export const RunPage: React.FC = () => {
       })
       .catch(() => {});
   }, [session, setRoute]);
+
+  const syncStatus = (status: 'success' | 'fail' | 'aborted') => {
+    if (!authToken || !currentSession?.serverId) return;
+    updateTrade(
+      currentSession.serverId,
+      {
+        status,
+        endedAt: Date.now(),
+        currentPrice: currentSession.currentPrice,
+        entryPrice: currentSession.entryPrice,
+        marginUsd: currentSession.marginUsd,
+        leverage: currentSession.leverage,
+        side: currentSession.side,
+      },
+      authToken
+    ).catch(() => {});
+  };
 
   useEffect(() => {
     if (!currentSession) return;
@@ -108,20 +127,24 @@ export const RunPage: React.FC = () => {
             if (nextPrice <= currentSession.liqPrice) {
               endedRef.current = true;
               completeSession('fail');
+              syncStatus('fail');
               setShowResult(true);
             } else if (nextPrice >= currentSession.targetPrice) {
               endedRef.current = true;
               completeSession('success');
+              syncStatus('success');
               setShowResult(true);
             }
           } else {
             if (nextPrice >= currentSession.liqPrice) {
               endedRef.current = true;
               completeSession('fail');
+              syncStatus('fail');
               setShowResult(true);
             } else if (nextPrice <= currentSession.targetPrice) {
               endedRef.current = true;
               completeSession('success');
+              syncStatus('success');
               setShowResult(true);
             }
           }
@@ -152,8 +175,10 @@ export const RunPage: React.FC = () => {
                 : currentSession.currentPrice <= currentSession.targetPrice;
             if (hitTarget) {
               completeSession('success');
+              syncStatus('success');
             } else {
               abortSession();
+              syncStatus('aborted');
             }
             setShowResult(true);
           }
@@ -198,6 +223,7 @@ export const RunPage: React.FC = () => {
       }
     }
     abortSession();
+    syncStatus('aborted');
     setShowResult(true);
   };
 

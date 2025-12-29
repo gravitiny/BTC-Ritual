@@ -13,11 +13,13 @@ import {
 } from './utils';
 import { detectLanguage } from './i18n';
 import {
+  loadAuthToken,
   loadCrownEvent,
   loadCrownInventory,
   loadCurrentSession,
   loadHistorySessions,
   loadLanguage,
+  saveAuthToken,
   saveCrownEvent,
   saveCrownInventory,
   saveCurrentSession,
@@ -28,6 +30,7 @@ import {
 interface AppState {
   route: AppRoute;
   walletBalanceUsdc: number | null;
+  authToken: string | null;
   language: Language;
   crownInventory: CrownInventory;
   lastCrownEvent: CrownEvent | null;
@@ -37,6 +40,7 @@ interface AppState {
   toasts: ToastMessage[];
   setRoute: (route: AppRoute) => void;
   setWalletBalanceUsdc: (balance: number | null) => void;
+  setAuthToken: (token: string | null) => void;
   setLanguage: (language: Language) => void;
   startSession: (payload: {
     side: TradeSide;
@@ -65,6 +69,7 @@ const bootstrapSession = () => {
 const bootstrapInventory = () => loadCrownInventory() ?? createEmptyCrownInventory();
 const bootstrapCrownEvent = () => loadCrownEvent();
 const bootstrapLanguage = () => loadLanguage() ?? detectLanguage();
+const bootstrapAuthToken = () => loadAuthToken();
 const bootstrapCurrent = () => bootstrapSession();
 const bootstrapHistory = (current: TradeSession | null) => {
   const history = loadHistorySessions();
@@ -80,6 +85,7 @@ const initialHistory = bootstrapHistory(initialCurrent);
 export const useAppStore = create<AppState>((set, get) => ({
   route: '/trade',
   walletBalanceUsdc: null,
+  authToken: bootstrapAuthToken(),
   language: bootstrapLanguage(),
   crownInventory: bootstrapInventory(),
   lastCrownEvent: bootstrapCrownEvent(),
@@ -89,6 +95,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   toasts: [],
   setRoute: (route) => set({ route }),
   setWalletBalanceUsdc: (balance) => set({ walletBalanceUsdc: balance }),
+  setAuthToken: (token) => {
+    saveAuthToken(token);
+    set({ authToken: token });
+  },
   setLanguage: (language) => {
     saveLanguage(language);
     set({ language });

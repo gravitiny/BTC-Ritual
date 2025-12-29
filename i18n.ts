@@ -178,6 +178,7 @@ const translations: Record<Language, Record<string, TranslationValue>> = {
       ],
       generating: '生成分享图中...',
       downloaded: '分享图已生成。',
+      failed: '分享失败：{message}',
     },
     misc: {
       you: '你',
@@ -358,6 +359,7 @@ const translations: Record<Language, Record<string, TranslationValue>> = {
       ],
       generating: 'Generating share image...',
       downloaded: 'Share image ready.',
+      failed: 'Share failed: {message}',
     },
     misc: {
       you: 'You',

@@ -19,6 +19,7 @@ export interface CrownEvent {
 
 export interface TradeSession {
   id: string;
+  serverId?: string;
   date: string; // YYYY-MM-DD
   side: TradeSide;
   targetProfitUsd: number;

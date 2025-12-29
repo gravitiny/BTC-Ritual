@@ -1,6 +1,6 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
-import { env } from './lib/env';
+import { env, getAllowedOrigins } from './lib/env';
 import { registerAuthRoutes } from './routes/auth';
 import { registerTradeRoutes } from './routes/trades';
 import { registerLeaderboardRoutes } from './routes/leaderboard';
@@ -16,22 +16,35 @@ declare module 'fastify' {
   }
 }
 
-const app = Fastify({ logger: true });
+const app = Fastify({ logger: true, bodyLimit: 10 * 1024 * 1024 });
+
+const allowedOrigins = getAllowedOrigins();
 
 await app.register(cors, {
-  origin: env.frontendOrigin,
+  origin: (origin, cb) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      cb(null, true);
+      return;
+    }
+    cb(new Error('Not allowed'), false);
+  },
   credentials: true,
 });
 
-app.addHook('preHandler', async (request) => {
+app.addHook('preHandler', async (request, reply) => {
   if (request.url.startsWith('/auth') || request.url.startsWith('/leaderboard')) return;
   const auth = request.headers.authorization;
   if (!auth?.startsWith('Bearer ')) {
-    throw app.httpErrors.unauthorized('Missing token');
+    reply.code(401).send({ error: 'Missing token' });
+    return;
   }
   const token = auth.replace('Bearer ', '');
-  const payload = verifyToken(token);
-  request.user = payload;
+  try {
+    const payload = verifyToken(token);
+    request.user = payload;
+  } catch {
+    reply.code(401).send({ error: 'Invalid token' });
+  }
 });
 
 registerAuthRoutes(app);

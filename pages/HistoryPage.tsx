@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { CROWN_TIERS } from '../constants';
 import { useAppStore } from '../store';
 import { calculatePnlUsd, getStreakDays, getSuccessRate, getTodayCount } from '../utils';
@@ -6,6 +6,7 @@ import { StatCard } from '../components/StatCard';
 import { getTierText, t } from '../i18n';
 import { ShareCard } from '../components/ShareCard';
 import { toPng } from 'html-to-image';
+import { fetchTrades, mapTrade, shareToTwitter } from '../services/api';
 
 const statusEmoji: Record<string, string> = {
   success: '🎊',
@@ -21,12 +22,25 @@ export const HistoryPage: React.FC = () => {
   const crownInventory = useAppStore((state) => state.crownInventory);
   const language = useAppStore((state) => state.language);
   const pushToast = useAppStore((state) => state.pushToast);
+  const authToken = useAppStore((state) => state.authToken);
   const [shareSession, setShareSession] = useState<(typeof history)[number] | null>(null);
   const [sharingId, setSharingId] = useState<string | null>(null);
   const shareRef = useRef<HTMLDivElement | null>(null);
+  const [serverHistory, setServerHistory] = useState<(typeof history) | null>(null);
 
-  const handleResume = (sessionId: string) => {
-    const session = history.find((item) => item.id === sessionId);
+  useEffect(() => {
+    if (!authToken) {
+      setServerHistory(null);
+      return;
+    }
+    fetchTrades(authToken)
+      .then((rows) => setServerHistory(rows.map(mapTrade)))
+      .catch(() => setServerHistory(null));
+  }, [authToken]);
+
+  const displayHistory = serverHistory ?? history;
+
+  const handleResume = (session: (typeof history)[number]) => {
     if (!session || session.status !== 'running') return;
     resumeSession(session);
     setRoute('/run');
@@ -47,23 +61,25 @@ export const HistoryPage: React.FC = () => {
 
   const handleShare = async (session: (typeof history)[number]) => {
     try {
+      if (!authToken) {
+        pushToast({ kind: 'error', message: t(language, 'toast.connectFirst') });
+        return;
+      }
       setSharingId(session.id);
       pushToast({ kind: 'info', message: t(language, 'share.generating') });
       setShareSession(session);
       await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
       if (!shareRef.current) return;
       const dataUrl = await toPng(shareRef.current, { cacheBust: true, pixelRatio: 2, backgroundColor: '#05010a' });
-      const link = document.createElement('a');
-      link.href = dataUrl;
-      link.download = `5u-warlord-${session.date}.png`;
-      link.click();
-      pushToast({ kind: 'success', message: t(language, 'share.downloaded') });
       const tweetText = buildTweetText(session);
-      const url = new URL('https://twitter.com/intent/tweet');
-      url.searchParams.set('text', tweetText);
-      window.open(url.toString(), '_blank', 'noopener,noreferrer');
+      await shareToTwitter(tweetText, dataUrl, authToken);
+      pushToast({ kind: 'success', message: t(language, 'share.downloaded') });
     } catch (error) {
-      pushToast({ kind: 'error', message: t(language, 'toast.orderFailedGeneric') });
+      const message = typeof (error as Error)?.message === 'string' ? (error as Error).message : '';
+      pushToast({
+        kind: 'error',
+        message: message ? t(language, 'share.failed', { message }) : t(language, 'toast.orderFailedGeneric'),
+      });
     } finally {
       setSharingId(null);
     }
@@ -72,9 +88,9 @@ export const HistoryPage: React.FC = () => {
   return (
     <div className="flex flex-col gap-6">
       <div className="grid gap-4 md:grid-cols-3">
-        <StatCard label={t(language, 'history.stats.streak')} value={`${getStreakDays(history)} ${t(language, 'units.days')}`} emoji="🔥" />
-        <StatCard label={t(language, 'history.stats.successRate')} value={`${getSuccessRate(history)}%`} emoji="🎯" />
-        <StatCard label={t(language, 'history.stats.todayCount')} value={`${getTodayCount(history)} ${t(language, 'units.times')}`} emoji="🧃" />
+        <StatCard label={t(language, 'history.stats.streak')} value={`${getStreakDays(displayHistory)} ${t(language, 'units.days')}`} emoji="🔥" />
+        <StatCard label={t(language, 'history.stats.successRate')} value={`${getSuccessRate(displayHistory)}%`} emoji="🎯" />
+        <StatCard label={t(language, 'history.stats.todayCount')} value={`${getTodayCount(displayHistory)} ${t(language, 'units.times')}`} emoji="🧃" />
       </div>
 
       <div className="rounded-3xl border-2 border-white/10 bg-black/40 p-6">
@@ -102,15 +118,15 @@ export const HistoryPage: React.FC = () => {
 
       <div className="rounded-3xl border-2 border-white/10 bg-black/40 p-6">
         <h2 className="text-xl font-black uppercase">{t(language, 'history.recordsTitle')}</h2>
-        {history.length === 0 ? (
+        {displayHistory.length === 0 ? (
           <p className="mt-4 text-sm text-white/60">{t(language, 'history.empty')}</p>
         ) : (
           <div className="mt-4 grid gap-3">
-            {history.map((session) => (
+            {displayHistory.map((session) => (
               <div
                 key={session.id}
                 className={`flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/60 px-4 py-3 text-sm ${session.status === 'running' ? 'cursor-pointer hover:border-primary/60' : 'opacity-80'}`}
-                onClick={() => handleResume(session.id)}
+                onClick={() => handleResume(session)}
               >
                 <div className="flex items-center gap-3">
                   <span className="text-2xl">{statusEmoji[session.status]}</span>

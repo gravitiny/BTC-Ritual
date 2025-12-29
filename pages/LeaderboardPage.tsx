@@ -1,8 +1,9 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { CROWN_TIERS } from '../constants';
 import { useAppStore } from '../store';
 import { CrownInventory } from '../types';
 import { getTierText, t } from '../i18n';
+import { fetchLeaderboard } from '../services/api';
 
 const crownScoreMap: Record<keyof CrownInventory, number> = {
   fragment: 0,
@@ -78,6 +79,9 @@ export const LeaderboardPage: React.FC = () => {
   const crownInventory = useAppStore((state) => state.crownInventory);
   const language = useAppStore((state) => state.language);
   const [leaderboardTab, setLeaderboardTab] = useState<'champions' | 'winrate' | 'clown'>('champions');
+  const [serverChampionRows, setServerChampionRows] = useState<any[] | null>(null);
+  const [serverWinRows, setServerWinRows] = useState<any[] | null>(null);
+  const [serverClownRows, setServerClownRows] = useState<any[] | null>(null);
 
   const topRankBadge = (rank: number) => {
     if (rank === 1) return '🥇';
@@ -94,6 +98,7 @@ export const LeaderboardPage: React.FC = () => {
   };
 
   const championRows = useMemo(() => {
+    if (serverChampionRows) return serverChampionRows;
     const withUser = [{ name: t(language, 'misc.you'), inventory: crownInventory }, ...mockChampionData[language]];
     return withUser
       .map((entry) => {
@@ -105,25 +110,42 @@ export const LeaderboardPage: React.FC = () => {
       })
       .sort((a, b) => b.score - a.score)
       .slice(0, 8);
-  }, [crownInventory, language]);
+  }, [crownInventory, language, serverChampionRows]);
 
   const winRateRows = useMemo(() => {
+    if (serverWinRows) return serverWinRows;
     return mockWinRateData[language]
       .map((entry) => ({
         ...entry,
         rate: (entry.wins / Math.max(entry.wins + entry.losses, 1)) * 100,
       }))
       .sort((a, b) => b.rate - a.rate);
-  }, [language]);
+  }, [language, serverWinRows]);
 
   const clownRows = useMemo(() => {
+    if (serverClownRows) return serverClownRows;
     return mockClownData[language]
       .map((entry) => ({
         ...entry,
         rate: (entry.losses / Math.max(entry.wins + entry.losses, 1)) * 100,
       }))
       .sort((a, b) => b.rate - a.rate);
-  }, [language]);
+  }, [language, serverClownRows]);
+
+  useEffect(() => {
+    const type = leaderboardTab === 'champions' ? 'champions' : leaderboardTab === 'winrate' ? 'winrate' : 'clown';
+    fetchLeaderboard(type)
+      .then((rows) => {
+        if (type === 'champions') setServerChampionRows(rows);
+        if (type === 'winrate') setServerWinRows(rows);
+        if (type === 'clown') setServerClownRows(rows);
+      })
+      .catch(() => {
+        if (type === 'champions') setServerChampionRows(null);
+        if (type === 'winrate') setServerWinRows(null);
+        if (type === 'clown') setServerClownRows(null);
+      });
+  }, [leaderboardTab]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -156,27 +178,30 @@ export const LeaderboardPage: React.FC = () => {
           <div className="mt-4 grid gap-3">
             {championRows.map((entry, index) => {
               const rank = index + 1;
+              const name = entry.displayName ?? entry.name ?? t(language, 'misc.you');
               return (
                 <div
-                  key={entry.name}
+                  key={entry.id ?? entry.userId ?? entry.name ?? index}
                   className={`flex flex-wrap items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-sm ${topRankClass(rank)}`}
                 >
-                <div className="flex items-center gap-3">
-                  <span className="text-xl font-black">{topRankBadge(rank)}</span>
-                  <div>
-                    <div className="font-bold uppercase">{entry.name}</div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xl font-black">{topRankBadge(rank)}</span>
+                    <div>
+                    <div className="font-bold uppercase">{name}</div>
                     <div className="text-xs text-white/60">
-                      {CROWN_TIERS.filter((tier) => tier.id !== 'fragment' && entry.inventory[tier.id] > 0)
-                        .map((tier) => {
-                          const tierText = getTierText(tier, language);
-                          return `${tierText.label}x${entry.inventory[tier.id]}`;
-                        })
-                        .join(' · ') || t(language, 'leaderboard.noCrown')}
+                      {entry.inventory
+                        ? CROWN_TIERS.filter((tier) => tier.id !== 'fragment' && entry.inventory[tier.id] > 0)
+                            .map((tier) => {
+                              const tierText = getTierText(tier, language);
+                              return `${tierText.label}x${entry.inventory[tier.id]}`;
+                            })
+                            .join(' · ')
+                        : t(language, 'leaderboard.noCrown')}
                     </div>
                   </div>
                 </div>
                 <div className="text-xs font-mono uppercase text-white/50">
-                  {t(language, 'leaderboard.score', { score: entry.score })}
+                  {t(language, 'leaderboard.score', { score: entry.score ?? entry.score_total ?? 0 })}
                 </div>
               </div>
               );
@@ -188,22 +213,24 @@ export const LeaderboardPage: React.FC = () => {
           <div className="mt-4 grid gap-3">
             {winRateRows.map((entry, index) => {
               const rank = index + 1;
+              const rate = entry.rate ?? (entry.ratio ?? 0) * 100;
+              const name = entry.displayName ?? entry.name ?? t(language, 'misc.you');
               return (
                 <div
-                  key={entry.name}
+                  key={entry.id ?? entry.userId ?? entry.name ?? index}
                   className={`flex flex-wrap items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-sm ${topRankClass(rank)}`}
                 >
-                <div className="flex items-center gap-3">
-                  <span className="text-xl font-black">{topRankBadge(rank)}</span>
-                  <div>
-                    <div className="font-bold uppercase">{entry.name}</div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xl font-black">{topRankBadge(rank)}</span>
+                    <div>
+                    <div className="font-bold uppercase">{name}</div>
                     <div className="text-xs text-white/60">
                       {t(language, 'leaderboard.record', { wins: entry.wins, losses: entry.losses })}
                     </div>
                   </div>
                 </div>
                 <div className="text-xs font-mono uppercase text-white/50">
-                  {t(language, 'leaderboard.winrate', { rate: entry.rate.toFixed(1) })}
+                  {t(language, 'leaderboard.winrate', { rate: rate.toFixed(1) })}
                 </div>
               </div>
               );
@@ -215,22 +242,24 @@ export const LeaderboardPage: React.FC = () => {
           <div className="mt-4 grid gap-3">
             {clownRows.map((entry, index) => {
               const rank = index + 1;
+              const rate = entry.rate ?? (entry.ratio ?? 0) * 100;
+              const name = entry.displayName ?? entry.name ?? t(language, 'misc.you');
               return (
                 <div
-                  key={entry.name}
+                  key={entry.id ?? entry.userId ?? entry.name ?? index}
                   className={`flex flex-wrap items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-sm ${topRankClass(rank)}`}
                 >
-                <div className="flex items-center gap-3">
-                  <span className="text-xl font-black">{topRankBadge(rank)}</span>
-                  <div>
-                    <div className="font-bold uppercase">{entry.name}</div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xl font-black">{topRankBadge(rank)}</span>
+                    <div>
+                    <div className="font-bold uppercase">{name}</div>
                     <div className="text-xs text-white/60">
                       {t(language, 'leaderboard.record', { wins: entry.wins, losses: entry.losses })}
                     </div>
                   </div>
                 </div>
                 <div className="text-xs font-mono uppercase text-white/50">
-                  {t(language, 'leaderboard.clownrate', { rate: entry.rate.toFixed(1) })}
+                  {t(language, 'leaderboard.clownrate', { rate: rate.toFixed(1) })}
                 </div>
               </div>
               );

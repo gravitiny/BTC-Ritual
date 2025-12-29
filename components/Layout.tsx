@@ -1,10 +1,11 @@
-import React, { useEffect } from 'react';
-import { useAccount, useConnect, useDisconnect } from 'wagmi';
+import React, { useEffect, useRef } from 'react';
+import { useAccount, useConnect, useDisconnect, useWalletClient } from 'wagmi';
 import { useAppStore } from '../store';
 import { formatUsd, shortAddress } from '../utils';
 import { ToastStack } from './Toast';
 import { fetchUsdcBalance } from '../services/hyperliquid';
 import { t } from '../i18n';
+import { requestNonce, verifySignature } from '../services/api';
 
 const navItems = [
   { key: 'trade', route: '/trade' as const },
@@ -20,9 +21,14 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
   const setWalletBalanceUsdc = useAppStore((state) => state.setWalletBalanceUsdc);
   const language = useAppStore((state) => state.language);
   const setLanguage = useAppStore((state) => state.setLanguage);
+  const authToken = useAppStore((state) => state.authToken);
+  const setAuthToken = useAppStore((state) => state.setAuthToken);
+  const pushToast = useAppStore((state) => state.pushToast);
   const { address, isConnected } = useAccount();
   const { connectAsync, connectors, isPending } = useConnect();
   const { disconnectAsync } = useDisconnect();
+  const { data: walletClient } = useWalletClient();
+  const authInFlight = useRef(false);
 
   useEffect(() => {
     if (!address || !isConnected) {
@@ -33,6 +39,28 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
       .then((balance) => setWalletBalanceUsdc(balance))
       .catch(() => setWalletBalanceUsdc(null));
   }, [address, isConnected, setWalletBalanceUsdc]);
+
+  useEffect(() => {
+    if (!address || !isConnected || !walletClient) return;
+    if (authToken || authInFlight.current) return;
+    authInFlight.current = true;
+    requestNonce(address)
+      .then(async ({ nonce, message }) => {
+        const signature = await walletClient.signMessage({ account: address, message });
+        return verifySignature(address, signature as `0x${string}`, nonce);
+      })
+      .then((payload) => {
+        if (payload?.token) {
+          setAuthToken(payload.token);
+        }
+      })
+      .catch(() => {
+        pushToast({ kind: 'error', message: t(language, 'toast.walletUnauthorized') });
+      })
+      .finally(() => {
+        authInFlight.current = false;
+      });
+  }, [address, authToken, isConnected, language, pushToast, setAuthToken, walletClient]);
 
   return (
     <div className="relative min-h-screen bg-grid text-white">
@@ -82,6 +110,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
               onClick={async () => {
                 if (isConnected) {
                   await disconnectAsync();
+                  setAuthToken(null);
                   return;
                 }
                 const injected = connectors.find((connector) => connector.id === 'injected') ?? connectors[0];

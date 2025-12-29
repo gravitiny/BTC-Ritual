@@ -12,7 +12,7 @@ const required = (key: string) => {
 
 export const env = {
   port: Number(process.env.PORT ?? 8787),
-  frontendOrigin: process.env.FRONTEND_ORIGIN ?? 'http://localhost:5173',
+  frontendOrigin: process.env.FRONTEND_ORIGIN ?? 'http://localhost:5173,http://localhost:3000',
   jwtSecret: required('JWT_SECRET'),
   supabaseUrl: required('SUPABASE_URL'),
   supabaseServiceKey: required('SUPABASE_SERVICE_ROLE_KEY'),
@@ -27,4 +27,11 @@ export const env = {
 export const hasTwitterConfig = () => {
   const { apiKey, apiSecret, accessToken, accessTokenSecret } = env.twitter;
   return Boolean(apiKey && apiSecret && accessToken && accessTokenSecret);
+};
+
+export const getAllowedOrigins = () => {
+  return env.frontendOrigin
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
 };

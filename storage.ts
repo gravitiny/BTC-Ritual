@@ -5,6 +5,7 @@ import { getTodayDate } from './utils';
 const CROWN_INVENTORY_KEY = 'crownInventory';
 const CROWN_EVENT_KEY = 'crownEvent';
 const LANGUAGE_KEY = 'appLanguage';
+const AUTH_TOKEN_KEY = 'authToken';
 
 const isBrowser = typeof window !== 'undefined';
 
@@ -142,6 +143,20 @@ export const loadLanguage = (): Language | null => {
 export const saveLanguage = (language: Language) => {
   if (!isBrowser) return;
   window.localStorage.setItem(LANGUAGE_KEY, language);
+};
+
+export const loadAuthToken = (): string | null => {
+  if (!isBrowser) return null;
+  return window.localStorage.getItem(AUTH_TOKEN_KEY);
+};
+
+export const saveAuthToken = (token: string | null) => {
+  if (!isBrowser) return;
+  if (!token) {
+    window.localStorage.removeItem(AUTH_TOKEN_KEY);
+    return;
+  }
+  window.localStorage.setItem(AUTH_TOKEN_KEY, token);
 };
 
 export const pruneHistory = (sessions: TradeSession[]) => {

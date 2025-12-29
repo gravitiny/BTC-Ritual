@@ -16,6 +16,7 @@ import { getAllMids, getCandleSnapshot, placeMarketOrderWithTakeProfit, prepareS
 import { calculateLiqPrice, calculateTargetPrice, formatPrice, getCrownTier, getTodayCount } from '../utils';
 import { PriceChart } from '../components/PriceChart';
 import { getTierText, t } from '../i18n';
+import { createTrade } from '../services/api';
 
 const buildCandlesFromSnapshot = (snapshot: any[]): CandlestickData[] => {
   return snapshot.map((candle) => ({
@@ -37,6 +38,7 @@ export const TradePage: React.FC = () => {
   const history = useAppStore((state) => state.historySessions);
   const walletBalanceUsdc = useAppStore((state) => state.walletBalanceUsdc);
   const language = useAppStore((state) => state.language);
+  const authToken = useAppStore((state) => state.authToken);
 
   const [side, setSide] = useState<TradeSide>('LONG');
   const [tpMultiple, setTpMultiple] = useState<number>(TP_MULTIPLE_OPTIONS[0]);
@@ -190,7 +192,7 @@ export const TradePage: React.FC = () => {
       const filledSize = Number(filled.totalSz ?? size);
       const actualMarginUsd = (filledSize * filledPrice) / LEVERAGE;
       const actualTargetProfitUsd = actualMarginUsd * tpMultiple;
-      startSession({
+      const session = startSession({
         side,
         targetProfitUsd: actualTargetProfitUsd,
         tpMultiple,
@@ -209,6 +211,24 @@ export const TradePage: React.FC = () => {
         marginUsd: actualMarginUsd,
         targetProfitUsd: actualTargetProfitUsd,
       });
+      if (authToken) {
+        createTrade(
+          {
+            ...session,
+            entryPrice: filledPrice,
+            currentPrice: filledPrice,
+            liqPrice,
+            targetPrice,
+            marginUsd: actualMarginUsd,
+            targetProfitUsd: actualTargetProfitUsd,
+          },
+          authToken
+        )
+          .then((created) => {
+            updateSession({ serverId: created.id });
+          })
+          .catch(() => {});
+      }
       if (tpStatus?.error) {
         pushToast({ kind: 'error', message: t(language, 'toast.tpFailed', { message: tpStatus.error }) });
       } else {
@@ -396,7 +416,7 @@ export const TradePage: React.FC = () => {
         </motion.div>
       </div>
 
-      <div className="rounded-[32px] border-4 border-primary bg-primary/10 p-6">
+      <div className="mt-4 rounded-[32px] border-4 border-primary bg-primary/10 p-6">
         <div className="flex flex-col items-start gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <h3 className="text-xl font-black uppercase">{t(language, 'trade.readyTitle')}</h3>
