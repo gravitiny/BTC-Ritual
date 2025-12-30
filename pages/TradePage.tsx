@@ -258,8 +258,13 @@ export const TradePage: React.FC = () => {
         <motion.div
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
-          className="rounded-3xl border-2 border-white/10 bg-black/40 p-5"
+          className="relative overflow-hidden rounded-3xl border-2 border-white/10 bg-black/50 p-5 shadow-[0_0_30px_rgba(205,43,238,0.15)]"
         >
+          <div className="pointer-events-none absolute inset-0">
+            <div className="absolute -left-16 top-[-60px] h-40 w-40 rounded-full bg-primary/20 blur-[50px]" />
+            <div className="absolute -right-10 bottom-[-80px] h-56 w-56 rounded-full bg-success/10 blur-[60px]" />
+            <div className="absolute inset-0 bg-[radial-gradient(rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:20px_20px] opacity-20" />
+          </div>
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-black uppercase">{t(language, 'trade.title')}</h2>
             <span className="text-xs font-mono uppercase text-white/50">
@@ -305,7 +310,7 @@ export const TradePage: React.FC = () => {
                 onClick={() => setSide(option)}
                 className={`rounded-xl border px-3 py-2 text-xs font-black uppercase transition-all ${
                   side === option
-                    ? 'border-success bg-success/20 text-success shadow-[0_0_12px_rgba(11,218,122,0.45)]'
+                    ? 'border-success/80 bg-success/20 text-success shadow-[0_0_20px_rgba(11,218,122,0.5)]'
                     : 'border-white/10 bg-black/30 text-white/60 hover:border-success/60'
                 }`}
               >
@@ -364,7 +369,7 @@ export const TradePage: React.FC = () => {
           </div>
           <div className="text-[10px] font-mono uppercase text-white/40">{t(language, 'trade.customMin')}</div>
 
-          <div className="mt-4 rounded-2xl border border-primary/70 bg-black px-4 py-3 text-sm font-black uppercase text-primary shadow-[0_0_18px_rgba(205,43,238,0.45)]">
+          <div className="mt-4 rounded-2xl border border-primary/80 bg-black px-4 py-4 text-base font-black uppercase text-primary shadow-[0_0_22px_rgba(205,43,238,0.55)]">
             {t(language, 'trade.targetProfit', { value: targetProfitUsd.toFixed(3) })}
           </div>
         </motion.div>
@@ -372,8 +377,12 @@ export const TradePage: React.FC = () => {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="rounded-3xl border-2 border-white/10 bg-black/40 p-4"
+          className="relative overflow-hidden rounded-3xl border-2 border-white/10 bg-black/40 p-4 shadow-[0_0_30px_rgba(0,0,0,0.4)]"
         >
+          <div className="pointer-events-none absolute inset-0">
+            <div className="absolute -right-12 top-[-40px] h-32 w-32 rounded-full bg-primary/10 blur-[50px]" />
+            <div className="absolute inset-0 bg-[radial-gradient(rgba(255,255,255,0.06)_1px,transparent_1px)] [background-size:22px_22px] opacity-20" />
+          </div>
           <div className="flex flex-wrap items-center justify-between gap-3 px-2 pb-3 text-xs font-mono uppercase text-white/60">
             <div className="flex items-center gap-3">
               <span>{t(language, 'trade.chartTitle')}</span>
